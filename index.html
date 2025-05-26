@@ -2,6 +2,8 @@
 <html lang="en">
 <head>    <meta charset="UTF-8">
     <title>Bonk: the Game</title>
+    <!-- Using fixed music system -->
+    <script src="bonk-music-system-fixed.js"></script>
     <style>
         body { background: #222; color: #fff; text-align: center; }
         canvas { background: #111; display: block; margin: 10px auto; border: 2px solid #fff; }
@@ -438,20 +440,18 @@
                         availableCells.splice(index, 1); // Remove to avoid repetition
                     }
                 }
-            }            // Enemy only appears from level 2 onwards
-            enemy = null;
-            if (level >= 2) {
-                // Enemy initial position: the accessible cell furthest from the player
-                let maxDist = -1, enemyPos = accessibleCells[0];
-                for (const [x, y] of accessibleCells) {
-                    let dist = Math.abs(x - player.x) + Math.abs(y - player.y);
-                    if (dist > maxDist) {
-                        maxDist = dist;
-                        enemyPos = [x, y];
-                    }
+            }
+
+            // Enemy initial position: the accessible cell furthest from the player
+            let maxDist = -1, enemyPos = accessibleCells[0];
+            for (const [x, y] of accessibleCells) {
+                let dist = Math.abs(x - player.x) + Math.abs(y - player.y);
+                if (dist > maxDist) {
+                    maxDist = dist;
+                    enemyPos = [x, y];
                 }
-                enemy = { x: enemyPos[0], y: enemyPos[1] };
-            }// Special ghosts at specific levels and standard second ghost
+            }
+            enemy = { x: enemyPos[0], y: enemyPos[1] };            // Special ghosts at specific levels and standard second ghost
             ghost2 = null;
             
             // Handle special levels (30,40,50 for ghost devil, 60,70,80 for real devil)
@@ -593,10 +593,9 @@
                     prizeSize, 
                     prizeSize
                 );
-            }              // Dibuja enemigo (si existe)
-            if (enemy) {
-                ctx.drawImage(ghostImg, enemy.x*tileSize, enemy.y*tileSize, tileSize, tileSize);
             }
+              // Dibuja enemigo
+            ctx.drawImage(ghostImg, enemy.x*tileSize, enemy.y*tileSize, tileSize, tileSize);
               // Dibuja al demonio (con animación mejorada en niveles especiales)
             if (devil) {
                 const devilScale = 1 + Math.sin(now / 600) * 0.1; // Stronger pulsing effect
@@ -616,9 +615,9 @@
                 );
                 ctx.restore();
             }
-              // Dibuja segundo fantasma (si existe)
-            if (ghost2) {
-                const scale = 1 + Math.sin(now / 750) * 0.05;
+            
+            // Dibuja segundo fantasma (si existe)
+            if (ghost2) {                const scale = 1 + Math.sin(now / 750) * 0.05;
                 const size = tileSize * scale;
                 const offset = (tileSize - size) / 2;
                 
@@ -1080,13 +1079,15 @@
         
         // Intervalo para mover fantasmas (el segundo más rápido)
         setInterval(moveEnemies, 500);
-          // Bucle de animación para efectos visuales
-        function animate() {
+          // Bucle de animación para efectos visuales        function animate() {
             if (!paused && !won) {
+                // Only redraw, don't regenerate the maze
                 draw();
             }
             requestAnimationFrame(animate);
-        }          function tryDraw() {
+        }
+        
+        function tryDraw() {
             // Check if all game parameters are properly initialized
             if (typeof tileSize === 'undefined' || !tilesX || !tilesY) {
                 console.error('Game parameters not properly initialized');
@@ -1097,9 +1098,12 @@
             // Check if all assets are loaded
             if (boncImg.complete && coinImg.complete && ghostImg.complete && lifeImg.complete && prizeImg.complete && devilImg.complete) {
                 try {
-                    maze = generateMazeAI(window.level);
-                    updateLivesDisplay();
-                    updateMusicForLevel(window.level);
+                    // Only generate the maze if it doesn't exist
+                    if (!maze) {
+                        maze = generateMazeAI(window.level);
+                        updateLivesDisplay();
+                        updateMusicForLevel(window.level);
+                    }
                     draw();
                     animate();
                 } catch (error) {
