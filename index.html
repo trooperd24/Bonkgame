@@ -9,38 +9,83 @@
             currentMusic: null,
             currentTrack: null,
             enabled: true,
+            isInitialized: false,
 
             updateForLevel(level) {
                 if (!this.enabled) return;
 
                 let trackPath;
-                if (level <= 19) trackPath = './sound/music-1-19-hiphop.mp3';
-                else if (level <= 39) trackPath = './sound/music-20-39-alien.mp3';
-                else if (level <= 69) trackPath = './sound/music-40-69-realm.mp3';
-                else if (level <= 89) trackPath = './sound/music-70-89-Hangover.mp3';
-                else trackPath = './sound/music-90-100-purgatory.mp3';
-
+                let rangeStart = 1;
+                let rangeSize = 0;
+                
+                // Determine which track to play based on level
+                if (level <= 19) {
+                    trackPath = './sound/music-1-19-hiphop.mp3';
+                    rangeStart = 1;
+                    rangeSize = 19;
+                } else if (level <= 39) {
+                    trackPath = './sound/music-20-39-alien.mp3';
+                    rangeStart = 20;
+                    rangeSize = 20;
+                } else if (level <= 69) {
+                    trackPath = './sound/music-40-69-realm.mp3';
+                    rangeStart = 40;
+                    rangeSize = 30;
+                } else if (level <= 89) {
+                    trackPath = './sound/music-70-89-Hangover.mp3';
+                    rangeStart = 70;
+                    rangeSize = 20;
+                } else {
+                    trackPath = './sound/music-90-100-purgatory.mp3';
+                    rangeStart = 90;
+                    rangeSize = 11;
+                }
+                
+                // Calculate playback speed based on position in range
+                const positionInRange = level - rangeStart;
+                const minSpeed = 0.95; // Slightly slower than normal at start
+                const maxSpeed = level > 89 ? 1.5 : 1.4; // Higher speed for last levels
+                const speedFactor = minSpeed + (positionInRange / rangeSize) * (maxSpeed - minSpeed);
+                
+                console.log(`Level ${level}: Playing ${trackPath} at speed ${speedFactor.toFixed(2)}x`);
+                
+                // Change track if necessary
                 if (trackPath !== this.currentTrack) {
                     this.stop();
-                    this.currentTrack = trackPath;                    this.currentMusic = new Audio(trackPath);
+                    this.currentTrack = trackPath;                    
+                    this.currentMusic = new Audio(trackPath);
                     this.currentMusic.loop = true;
                     this.currentMusic.volume = 0.7; // Set default volume to 70%
                     
-                    if (!window.paused && !window.won) {
+                    if (this.isInitialized && !window.paused && !window.won) {
                         this.play();
                     }
+                } else if (this.currentMusic) {
+                    // Just update the speed if track is the same
+                    this.currentMusic.playbackRate = Math.min(speedFactor, 1.5);
+                    return;
+                }
+                
+                // Apply speed factor to current music
+                if (this.currentMusic) {
+                    this.currentMusic.playbackRate = Math.min(speedFactor, 1.5); // Limit to 1.5x for audio quality
                 }
             },
 
             play() {
                 if (this.enabled && this.currentMusic) {
-                    this.currentMusic.play().catch(e => console.log('Music play error:', e));
+                    this.currentMusic.play().catch(e => {
+                        console.log('Music play error:', e);
+                        // Flag that we need user interaction
+                        this.isInitialized = false;
+                    });
                 }
             },
 
             stop() {
                 if (this.currentMusic) {
                     this.currentMusic.pause();
+                    this.currentMusic.currentTime = 0;
                     this.currentMusic = null;
                 }
                 this.currentTrack = null;
@@ -52,34 +97,42 @@
                 } else if (this.currentMusic) {
                     this.currentMusic.pause();
                 }
-            },            playEffect(soundPath) {
+            },
+            
+            playEffect(soundPath) {
                 if (this.enabled) {
                     const effect = new Audio(soundPath);
                     effect.volume = 0.5; // Set effects volume to 50%
                     effect.play().catch(e => console.log('Sound effect error:', e));
                 }
             }
-        };        // Initialize music system
+        };
+        
+        // Initialize music system after DOM is loaded
         document.addEventListener('DOMContentLoaded', () => {
             GameMusic.enabled = true;
-            GameMusic.updateForLevel(level);
+            
+            // We'll actually wait for user interaction before initializing
+            // This happens in the startMusicOnInteraction function
         });
 
         // Make music functions globally available
         window.updateMusicForLevel = (level) => GameMusic.updateForLevel(level);
         window.toggleMusic = (shouldPlay) => GameMusic.toggle(shouldPlay);
         window.stopMusic = () => GameMusic.stop();
-        window.playSound = (path) => GameMusic.playEffect(path);        // Add interaction handlers for first user input to start music
+        window.playSound = (path) => GameMusic.playEffect(path);
+        
+        // Add interaction handlers for first user input to start music
         const startMusicOnInteraction = () => {
-            if (GameMusic.enabled && !window.paused && !window.won) {
+            if (!GameMusic.isInitialized && GameMusic.enabled && !window.paused && !window.won) {
+                GameMusic.isInitialized = true;
+                GameMusic.updateForLevel(level);
                 GameMusic.play();
-                // Remove the handlers once music starts
-                document.removeEventListener('click', startMusicOnInteraction);
-                document.removeEventListener('keydown', startMusicOnInteraction);
+                console.log("Music initialized after user interaction");
             }
         };
 
-        // Listen for either click or keypress
+        // Listen for either click or keypress to initialize audio
         document.addEventListener('click', startMusicOnInteraction);
         document.addEventListener('keydown', startMusicOnInteraction);
     </script>
@@ -152,7 +205,8 @@
         .ghost2 {
             filter: hue-rotate(120deg) brightness(1.2);
             animation: pulse 1.5s infinite alternate;
-        }        @keyframes pulse {
+        }
+        @keyframes pulse {
             0% { opacity: 0.7; transform: scale(0.95); }
             100% { opacity: 1.0; transform: scale(1.05); }
         }
@@ -213,7 +267,8 @@
     <div id="score">
         <span id="scoreText">Score: 0 | Level: 1</span>
         <span id="lives"></span>
-    </div>    <div id="maxLivesMsg">Reached Max lives. Turned into points, well done!</div>
+    </div>
+    <div id="maxLivesMsg">Reached Max lives. Turned into points, well done!</div>
     <canvas id="gameCanvas" width="480" height="480"></canvas>
     <div id="credits">
         <div id="leftCredit"><a href="https://bonkscoin.io/" target="_blank">BonkCoin</a></div>
@@ -223,9 +278,26 @@
         <div id="winText"></div>
         <button onclick="playAgain()">Play again</button>
     </div>
-    <div id="pausedMsg">Paused<br><span style="font-size:0.7em;">Press Space, Enter or Click to resume</span></div>    <script>
+    <div id="pausedMsg">Paused<br><span style="font-size:0.7em;">Press Space, Enter or Click to resume</span></div>
+    <script>
         // Initialize canvas FIRST!
         const canvas = document.getElementById('gameCanvas');
+        
+        // Add click handler for music toggle button
+        const musicToggle = document.getElementById('musicToggle');
+        musicToggle.addEventListener('click', () => {
+            GameMusic.enabled = !GameMusic.enabled;
+            musicToggle.classList.toggle('off', !GameMusic.enabled);
+            musicToggle.querySelector('span').textContent = `Music: ${GameMusic.enabled ? 'On' : 'Off'}`;
+            
+            if (GameMusic.enabled) {
+                if (!window.paused && !window.won) {
+                    GameMusic.updateForLevel(level);
+                }
+            } else {
+                GameMusic.stop();
+            }
+        });
         
         // Load assets
         const boncImg = new Image();
@@ -250,7 +322,8 @@
         let lives = 3;
         const maxLives = 6;
         let player = { x: 1, y: 1, dir: 'right' };
-        let initialPlayerPos = { x: 1, y: 1, dir: 'right' };        let maze = [];
+        let initialPlayerPos = { x: 1, y: 1, dir: 'right' };
+        let maze = [];
         let coins = [];
         let lifeItems = [];
         let prizes = [];
@@ -264,13 +337,16 @@
             for (let i = 0; i < lives; i++) {
                 livesDiv.innerHTML += `<img src="./assets/bonc.png" alt="life">`;
             }
-        }        function showMaxLivesMsg() {
+        }
+        
+        function showMaxLivesMsg() {
             const msg = document.getElementById('maxLivesMsg');
-            msg.textContent = 'Copied to clipboard!';
+            msg.textContent = 'Reached Max lives. Turned into points, well done!';
             msg.style.visibility = 'visible';
             setTimeout(() => { msg.style.visibility = 'hidden'; }, 2500);
         }
-          // Loose obstacles from the beginning, no large blocks
+        
+        // Loose obstacles from the beginning, no large blocks
         function canPlaceObstacle(m, rx, ry) {
             // Do not allow more than 2 obstacles together (in cross or block pattern)
             let count = 0;
@@ -299,7 +375,9 @@
                 }
             }
             return count <= 2;
-        }        // Find a free cell near the center and not surrounded by obstacles
+        }
+        
+        // Find a free cell near the center and not surrounded by obstacles
         function findPlayerStart(maze) {
             const centerX = Math.floor(maze[0].length / 2);
             const centerY = Math.floor(maze.length / 2);
@@ -325,7 +403,9 @@
             }
             // If nothing is found, fallback to (1,1)
             return best || { x: 1, y: 1 };
-        }        function generateMazeAI(level) {
+        }
+        
+        function generateMazeAI(level) {
             // Cap map size growth at level 81 (15 + Math.floor((81-1)/10) = 15 + 8 = 23)
             tilesX = tilesY = 15 + Math.min(8, Math.floor((level-1)/10));
             canvas.width = tilesX * tileSize;
@@ -352,7 +432,8 @@
                 const mapSizeIncrease = Math.floor((level-1)/10);
                 
                 // Reducir probabilidad en el centro en 5% por cada incremento de tamaño del mapa
-                if (level >= 10) {                    // If it's near the center and exceeds the probability check, we skip
+                if (level >= 10) {
+                    // If it's near the center and exceeds the probability check, we skip
                     const centerThreshold = Math.max(tilesX, tilesY) * 0.2; // Defines "near the center"
                     const reductionFactor = mapSizeIncrease * 0.05; // 5% less for each increment
                     
@@ -400,11 +481,15 @@
                     }
                 }
                 return accessible;
-            }            // Only place objects in accessible cells
+            }
+            
+            // Only place objects in accessible cells
             let accessibleCells = getAccessibleCells(player.x, player.y);
             coins = [];
             lifeItems = [];
-            prizes = [];              // Filtered accessible cells (exclude player position)
+            prizes = [];
+            
+            // Filtered accessible cells (exclude player position)
             const availableCoinCells = accessibleCells.filter(([x, y]) => 
                 (x !== player.x || y !== player.y)
             );
@@ -461,7 +546,8 @@
                     }
                 }
             }
-              // Prize - appears once every 3 levels starting from level 10
+            
+            // Prize - appears once every 3 levels starting from level 10
             if (level >= 10 && level % 3 === 0 && accessibleCells.length > 3) {
                 // Find accessible cells that don't have a coin or player
                 const availableCellsForPrize = accessibleCells.filter(([x, y]) => 
@@ -476,7 +562,8 @@
                     prizes.push({x, y});
                 }
             }
-              // Extra life - 1 or 2 lives every 10 levels
+            
+            // Extra life - 1 or 2 lives every 10 levels
             if (level % 10 === 0 && accessibleCells.length > 3) {
                 // Determine how many extra lives (1 or 2)
                 const numLives = Math.floor(Math.random() * 2) + 1;
@@ -487,7 +574,8 @@
                     !coins.some(coin => coin.x === x && coin.y === y) &&
                     !prizes.some(prize => prize.x === x && prize.y === y)
                 );
-                  // Place lives if there are available cells
+                
+                // Place lives if there are available cells
                 if (availableCells.length >= numLives) {
                     // Shuffle the array to choose random positions
                     for (let i = 0; i < numLives; i++) {
@@ -497,7 +585,9 @@
                         availableCells.splice(index, 1); // Remove to avoid repetition
                     }
                 }
-            }            // Enemy generation - only from level 4 onwards
+            }
+            
+            // Enemy generation - only from level 4 onwards
             enemy = null;
             if (level >= 4) {
                 // Enemy initial position: the accessible cell furthest from the player
@@ -510,11 +600,14 @@
                     }
                 }
                 enemy = { x: enemyPos[0], y: enemyPos[1] };
-            }// Special ghosts at specific levels and standard second ghost
+            }
+            
+            // Special ghosts at specific levels and standard second ghost
             ghost2 = null;
             
             // Handle special levels (30,40,50 for ghost devil, 60,70,80 for real devil)
-            if ([30, 40, 50, 60, 70, 80].includes(level) && accessibleCells.length > 3) {                // Play suspense music
+            if ([30, 40, 50, 60, 70, 80].includes(level) && accessibleCells.length > 3) {
+                // Play suspense music
                 GameMusic.playEffect('./sound/suspense.mp3');
                 
                 // For levels 60,70,80 we'll add the real devil later
@@ -543,7 +636,8 @@
                 const vy = enemy.y - player.y;
                 
                 // Find a cell that's in the opposite direction
-                for (const [x, y] of accessibleCells) {                    // Vector from player to this cell
+                for (const [x, y] of accessibleCells) {
+                    // Vector from player to this cell
                     const wx = x - player.x;
                     const wy = y - player.y;
                     
@@ -569,10 +663,13 @@
                         ghost2Pos = [distances[0].x, distances[0].y];
                     }
                 }
-                  if (ghost2Pos) {
+                
+                if (ghost2Pos) {
                     ghost2 = { x: ghost2Pos[0], y: ghost2Pos[1] };
                 }
-            }              // The Devil enemy appears at levels 60,70,80 and from level 90
+            }
+            
+            // The Devil enemy appears at levels 60,70,80 and from level 90
             devil = null;
             if ((level >= 90 || [60, 70, 80].includes(level)) && accessibleCells.length > 3) {
                 // Find cells near the first ghost that are accessible
@@ -603,7 +700,7 @@
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // Dibuja laberinto
+            // Draw maze
             for (let y = 0; y < tilesY; y++) {
                 for (let x = 0; x < tilesX; x++) {
                     if (maze[y][x] === 1) {
@@ -612,18 +709,19 @@
                     }
                 }
             }
-              // Dibuja monedas
+            
+            // Draw coins
             for (const coin of coins) {
                 ctx.drawImage(coinImg, coin.x*tileSize+6, coin.y*tileSize+6, tileSize-12, tileSize-12);
             }
-              
+            
             const now = Date.now();
             
-            // Dibuja vidas con movimiento lateral suave (reducido 50%)
-            const lifeSwingOffset = Math.sin(now / 500) * 4; // Oscilación de -4px a 4px (reducida un 50%)
+            // Draw lives with smooth lateral movement (reduced by 50%)
+            const lifeSwingOffset = Math.sin(now / 500) * 4; // Oscillation from -4px to 4px (reduced by 50%)
             
             for (const life of lifeItems) {
-                // Aplica movimiento lateral suave a las vidas
+                // Apply smooth lateral movement to lives
                 ctx.drawImage(
                     lifeImg, 
                     life.x * tileSize + 6 + lifeSwingOffset, 
@@ -632,15 +730,16 @@
                     tileSize - 12
                 );
             }
-              // Dibuja premios con efecto de pulsación (agrande/disminuye)
-            const prizeScaleFactor = 1 + Math.sin(now / 400) * 0.15; // Escala entre 0.85 y 1.15
+            
+            // Draw prizes with pulsation effect (grows/shrinks)
+            const prizeScaleFactor = 1 + Math.sin(now / 400) * 0.15; // Scale between 0.85 and 1.15
             
             for (const prize of prizes) {
-                // Calcula el tamaño y el offset para centrar la imagen al escalarla
+                // Calculate size and offset to center the image when scaling
                 const prizeSize = (tileSize - 12) * prizeScaleFactor;
                 const offsetX = (tileSize - prizeSize) / 2;
                 
-                // Aplica efecto de escala a los premios
+                // Apply scaling effect to prizes
                 ctx.drawImage(
                     prizeImg, 
                     prize.x * tileSize + offsetX, 
@@ -648,11 +747,14 @@
                     prizeSize, 
                     prizeSize
                 );
-            }            // Dibuja enemigo (si existe)
+            }
+            
+            // Draw enemy (if it exists)
             if (enemy) {
                 ctx.drawImage(ghostImg, enemy.x*tileSize, enemy.y*tileSize, tileSize, tileSize);
             }
-              // Dibuja al demonio (con animación mejorada en niveles especiales)
+            
+            // Draw devil (with improved animation on special levels)
             if (devil) {
                 const devilScale = 1 + Math.sin(now / 600) * 0.1; // Stronger pulsing effect
                 const devilSize = tileSize * devilScale;
@@ -671,7 +773,8 @@
                 );
                 ctx.restore();
             }
-              // Dibuja segundo fantasma (si existe)
+            
+            // Draw second ghost (if it exists)
             if (ghost2) {                
                 const scale = 1 + Math.sin(now / 750) * 0.05;
                 const size = tileSize * scale;
@@ -703,7 +806,8 @@
                 }
                 ctx.restore();
             }
-              // Dibuja jugador
+            
+            // Draw player
             ctx.save();
             if (player.lastDir === 'right') {
                 ctx.translate((player.x+1)*tileSize, player.y*tileSize);
@@ -713,7 +817,9 @@
                 ctx.drawImage(boncImg, player.x*tileSize, player.y*tileSize, tileSize, tileSize);
             }
             ctx.restore();
-        }        function collectLife() {
+        }
+        
+        function collectLife() {
             if (lives < maxLives) {
                 lives++;
                 updateLivesDisplay();
@@ -725,7 +831,9 @@
                 document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
                 showMaxLivesMsg();
             }
-        }function movePlayer(dir) {
+        }
+        
+        function movePlayer(dir) {
             if (won || paused) return;
             let dx = 0, dy = 0;
             if (dir === 'up') dy = -1;
@@ -737,21 +845,24 @@
                 player.x = nx;
                 player.y = ny;
                 if (dir === 'left' || dir === 'right') {
-                    player.lastDir = dir; // Cambia la dirección solo si es izquierda o derecha
+                    player.lastDir = dir; // Only change direction if left or right
                 }
                 player.dir = dir;
                 
-                // Recolectar monedas
-                for (let i = 0; i < coins.length; i++) {                if (coins[i].x === player.x && coins[i].y === player.y) {
+                // Collect coins
+                for (let i = 0; i < coins.length; i++) {
+                    if (coins[i].x === player.x && coins[i].y === player.y) {
                         coins.splice(i, 1);
                         score++;
                         document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
-                          // Play coin sound
+                        
+                        // Play coin sound
                         GameMusic.playEffect('./sound/coin.mp3');
                         break;
                     }
                 }
-                  // Recolectar vida extra
+                
+                // Collect extra life
                 for (let i = 0; i < lifeItems.length; i++) {
                     if (lifeItems[i].x === player.x && lifeItems[i].y === player.y) {
                         lifeItems.splice(i, 1);
@@ -760,22 +871,26 @@
                     }
                 }
                 
-                // Recolectar premio
+                // Collect prize
                 for (let i = 0; i < prizes.length; i++) {
-                    if (prizes[i].x === player.x && prizes[i].y === player.y) {                        prizes.splice(i, 1);
-                        score += 5; // El premio otorga 5 puntos
+                    if (prizes[i].x === player.x && prizes[i].y === player.y) {
+                        prizes.splice(i, 1);
+                        score += 5; // Prize gives 5 points
                         document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
-                          // Play coin sound for prize
+                        
+                        // Play coin sound for prize
                         GameMusic.playEffect('./sound/coin.mp3');
                         break;
                     }
                 }
-                  // Pasar al siguiente nivel
-                if (coins.length === 0) {                    if (level >= 100) {
+                
+                // Go to next level
+                if (coins.length === 0) {
+                    if (level >= 100) {
                         winGame();
                         return;
                     }
-                    // Si el siguiente nivel sería mayor que 100, establecerlo exactamente a 100
+                    // If next level would be greater than 100, set it exactly to 100
                     if (level === 99) {
                         level = 100;
                     } else {
@@ -800,8 +915,10 @@
         }
 
         let moveDir = null;
-        let moveInterval = null;        document.addEventListener('keydown', e => {
-            // Prevenir el desplazamiento con las teclas de dirección
+        let moveInterval = null;
+        
+        document.addEventListener('keydown', e => {
+            // Prevent scrolling with arrow keys
             if (e.key.startsWith('Arrow')) {
                 e.preventDefault();
             }
@@ -809,30 +926,21 @@
             if (won) {
                 if (e.key === ' ' || e.key === 'Enter') playAgain();
                 return;
-            }            // Pausa con P
+            }
+            
+            // Pause with P
             if (e.key === 'p' || e.key === 'P') {
                 togglePause();
                 return;
             }
-              // Toggle music with M key
+            
+            // Toggle music with M key
             if (e.key === 'm' || e.key === 'M') {
                 GameMusic.enabled = !GameMusic.enabled;
-        const musicToggle = document.getElementById('musicToggle');
-        musicToggle.classList.toggle('off', !GameMusic.enabled);
-        musicToggle.querySelector('span').textContent = `Music: ${GameMusic.enabled ? 'On' : 'Off'}`;
-        // Add click handler for music toggle button
-        musicToggle.addEventListener('click', () => {
-            GameMusic.enabled = !GameMusic.enabled;
-            musicToggle.classList.toggle('off', !GameMusic.enabled);
-            musicToggle.querySelector('span').textContent = `Music: ${GameMusic.enabled ? 'On' : 'Off'}`;
-            if (GameMusic.enabled) {
-                if (!paused && !won) {
-                    GameMusic.updateForLevel(level);
-                }
-            } else {
-                GameMusic.stop();
-            }
-        });
+                const musicToggle = document.getElementById('musicToggle');
+                musicToggle.classList.toggle('off', !GameMusic.enabled);
+                musicToggle.querySelector('span').textContent = `Music: ${GameMusic.enabled ? 'On' : 'Off'}`;
+                
                 if (GameMusic.enabled) {
                     if (!paused && !won) {
                         GameMusic.updateForLevel(level);
@@ -843,14 +951,14 @@
                 return;
             }
             
-            // Avanza nivel con Ñ(pero no más allá del nivel 100)
+            // Skip to next level with Ñ (but not beyond level 100)
             if ((e.key === 'ñ' || e.key === 'Ñ') && !paused) {
                 if (level >= 100) {
-                    // Si ya estamos en el nivel 100 o superior, terminar el juego
+                    // If we're already at level 100 or higher, end the game
                     winGame();
                     return;
                 }
-                // Si el siguiente nivel sería 100, asegurarse de que sea exactamente 100
+                // If next level would be 100, make sure it's exactly 100
                 if (level === 99) {
                     level = 100;
                 } else {
@@ -858,15 +966,20 @@
                 }
                 maze = generateMazeAI(level);
                 document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
+                
+                // Update music for new level
+                GameMusic.updateForLevel(level);
                 draw();
                 return;
             }
-            // Reanuda con espacio o enter
+            
+            // Resume with space or enter
             if (paused && (e.key === ' ' || e.key === 'Enter')) {
                 togglePause(false);
                 return;
             }
-            // Movimiento
+            
+            // Movement
             const dir = keyToDir(e.key);
             if (dir && moveDir !== dir && !paused) {
                 moveDir = dir;
@@ -875,6 +988,7 @@
                 moveInterval = setInterval(() => movePlayer(moveDir), 100);
             }
         });
+        
         document.addEventListener('keyup', e => {
             const dir = keyToDir(e.key);
             if (dir && moveDir === dir) {
@@ -882,23 +996,30 @@
                 if (moveInterval) clearInterval(moveInterval);
             }
         });
+        
         document.addEventListener('mousedown', () => {
             if (paused) togglePause(false);
-        });        function togglePause(force = null) {
+        });
+        
+        function togglePause(force = null) {
             if (won) return;
             paused = (force === null) ? !paused : force;
             document.getElementById('pausedMsg').style.display = paused ? 'block' : 'none';
             
             // Toggle music based on pause state
             GameMusic.toggle(!paused);
-        }function winGame() {
+        }
+        
+        function winGame() {
             won = true;
             document.getElementById('winText').innerHTML = `You've won! Well done!<br>Your Score: <b>${score}</b>`;
             document.getElementById('winMenu').style.display = 'flex';
             
             // Stop the music when game is won
             GameMusic.stop();
-        }function takeScreenshot() {
+        }
+        
+        function takeScreenshot() {
             // Hide screenshot button temporarily for the capture
             const screenshotBtn = document.querySelector('#screenshotBtn');
             if (screenshotBtn) {
@@ -964,7 +1085,9 @@
                     screenshotBtn.style.display = 'block';
                 }
             }
-        }        window.playAgain = function() {
+        }
+        
+        window.playAgain = function() {
             won = false;
             score = 0;
             level = 1;
@@ -973,7 +1096,8 @@
             document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
             document.getElementById('winMenu').style.display = 'none';
             updateLivesDisplay();
-              // Reset music when starting a new game
+            
+            // Reset music when starting a new game
             GameMusic.stop();
             GameMusic.updateForLevel(level);
             
@@ -987,16 +1111,22 @@
                 won = true;
                 document.getElementById('winText').innerHTML = `Game Over!<br>Your score: <b>${score}</b>`;
                 document.getElementById('winMenu').style.display = 'flex';
+                
+                // Stop music when game is over
+                GameMusic.stop();
             } else {
+                // Play hurt sound
+                GameMusic.playEffect('./sound/life.mp3');
                 player = { ...initialPlayerPos };
                 draw();
             }
         }
 
-        // Movimiento de los fantasmas
+        // Ghost movement
         function moveEnemies() {
             if (won || paused) return;
-              // Mover primer fantasma (si existe)
+            
+            // Move first ghost (if exists)
             if (enemy) {
                 let dx = player.x - enemy.x;
                 let dy = player.y - enemy.y;
@@ -1007,7 +1137,7 @@
                     moveY = dy > 0 ? 1 : -1;
                 }
                 
-                // Comprobar movimiento válido
+                // Check valid movement
                 if (maze[enemy.y + moveY] && maze[enemy.y + moveY][enemy.x + moveX] === 0) {
                     enemy.x += moveX;
                     enemy.y += moveY;
@@ -1018,13 +1148,13 @@
                 }
             }
             
-            // Mover segundo fantasma (si existe) con un patrón diferente
+            // Move second ghost (if exists) with a different pattern
             if (ghost2) {
-                // El segundo fantasma es un poco más inteligente, intenta acorralar al jugador
+                // The second ghost is a bit smarter, tries to corner the player
                 dx = player.x - ghost2.x;
                 dy = player.y - ghost2.y;
                 
-                // Elige una dirección aleatoria a veces para ser menos predecible
+                // Choose a random direction sometimes to be less predictable
                 if (Math.random() < 0.3) {
                     if (Math.random() < 0.5) {
                         moveX = Math.sign(dx);
@@ -1034,7 +1164,7 @@
                         moveX = 0;
                     }
                 } else {
-                    // Estrategia normal
+                    // Normal strategy
                     if (Math.abs(dx) > Math.abs(dy)) {
                         moveX = dx > 0 ? 1 : -1;
                         moveY = 0;
@@ -1044,7 +1174,7 @@
                     }
                 }
                 
-                // Comprobar movimiento válido para ghost2
+                // Check valid movement for ghost2
                 if (maze[ghost2.y + moveY] && maze[ghost2.y + moveY][ghost2.x + moveX] === 0) {
                     ghost2.x += moveX;
                     ghost2.y += moveY;
@@ -1053,17 +1183,19 @@
                 } else if (moveY !== 0 && maze[ghost2.y + moveY][ghost2.x] === 0) {
                     ghost2.y += moveY;
                 }
-            }              // Mover al demonio (si existe) - se mueve 50% más lento pero siempre está en movimiento
+            }
+            
+            // Move the devil (if exists) - moves 50% slower but always moves
             if (devil) {
                 const currentTime = Date.now();
-                // Solo se mueve cada 1000ms (los fantasmas normales se mueven cada 500ms)
+                // Only moves every 1000ms (normal ghosts move every 500ms)
                 if (currentTime - devil.lastMoveTime >= 1000) {
                     devil.lastMoveTime = currentTime;
                     
                     dx = player.x - devil.x;
                     dy = player.y - devil.y;
                     
-                    // Algoritmo de movimiento similar al primer fantasma
+                    // Movement algorithm similar to first ghost
                     if (Math.abs(dx) > Math.abs(dy)) {
                         moveX = dx > 0 ? 1 : -1;
                         moveY = 0;
@@ -1072,10 +1204,10 @@
                         moveX = 0;
                     }
                     
-                    // Comprobar movimiento válido para el demonio
+                    // Check valid movement for devil
                     let moved = false;
                     
-                    // Intenta el movimiento directo primero
+                    // Try direct movement first
                     if (maze[devil.y + moveY] && maze[devil.y + moveY][devil.x + moveX] === 0) {
                         devil.x += moveX;
                         devil.y += moveY;
@@ -1088,15 +1220,15 @@
                         moved = true;
                     }
                     
-                    // Si no se pudo mover, busca cualquier celda disponible más cercana al jugador
+                    // If couldn't move, look for any available cell closer to player
                     if (!moved) {
-                        // Definir direcciones posibles (incluyendo diagonales)
+                        // Define possible directions (including diagonals)
                         const directions = [
-                            [0, 1], [1, 0], [0, -1], [-1, 0], // Cardinales
-                            [1, 1], [1, -1], [-1, 1], [-1, -1] // Diagonales
+                            [0, 1], [1, 0], [0, -1], [-1, 0], // Cardinals
+                            [1, 1], [1, -1], [-1, 1], [-1, -1] // Diagonals
                         ];
                         
-                        // Ordenar las direcciones por cercanía al jugador
+                        // Sort directions by proximity to player
                         const sortedDirs = directions
                             .map(([dx, dy]) => {
                                 return {
@@ -1104,9 +1236,9 @@
                                     dist: Math.abs((devil.x + dx) - player.x) + Math.abs((devil.y + dy) - player.y)
                                 };
                             })
-                            .sort((a, b) => a.dist - b.dist); // Ordenar por distancia ascendente
+                            .sort((a, b) => a.dist - b.dist); // Sort by ascending distance
                         
-                        // Probar cada dirección ordenada hasta encontrar una válida
+                        // Try each sorted direction until finding a valid one
                         for (const {dx, dy} of sortedDirs) {
                             if (maze[devil.y + dy] && 
                                 maze[devil.y + dy][devil.x + dx] === 0) {
@@ -1119,7 +1251,8 @@
                     }
                 }
             }
-              // Si algún fantasma o el demonio alcanza al jugador, pierde una vida
+            
+            // If any ghost or devil reaches the player, lose a life
             if ((enemy && enemy.x === player.x && enemy.y === player.y) || 
                 (ghost2 && ghost2.x === player.x && ghost2.y === player.y) ||
                 (devil && devil.x === player.x && devil.y === player.y)) {
@@ -1130,20 +1263,23 @@
             draw();
         }
         
-        // Intervalo para mover fantasmas (el segundo más rápido)
+        // Interval to move ghosts (the second faster)
         setInterval(moveEnemies, 500);
         
-        // Bucle de animación para efectos visuales
+        // Animation loop for visual effects
         function animate() {
             if (!paused && !won) {
                 draw();
             }
             requestAnimationFrame(animate);
-        }        function tryDraw() {
+        }
+        
+        function tryDraw() {
             if (boncImg.complete && coinImg.complete && ghostImg.complete && lifeImg.complete && prizeImg.complete && devilImg.complete) {
                 maze = generateMazeAI(level);
-                updateLivesDisplay();                // Initialize music and UI
-                GameMusic.updateForLevel(level);
+                updateLivesDisplay();
+                
+                // Initialize music and UI
                 document.getElementById('musicToggle').classList.toggle('off', !GameMusic.enabled);
                 draw();
                 animate();
