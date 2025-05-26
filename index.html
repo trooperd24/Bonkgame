@@ -4,85 +4,84 @@
     <meta charset="UTF-8">
     <title>Bonk: the Game</title>
     <script>
-        // Initialize music system first
-        const BonkMusic = {
-            gameMusic: null,
-            musicTracks: {
-                hiphop: './sound/music-1-19-hiphop.mp3',
-                alien: './sound/music-20-39-alien.mp3',
-                realm: './sound/music-40-69-realm.mp3',
-                hangover: './sound/music-70-89-Hangover.mp3',
-                purgatory: './sound/music-90-100-purgatory.mp3',
-                suspense: './sound/suspense.mp3'
-            },
+        // Game Music System
+        const GameMusic = {
+            currentMusic: null,
             currentTrack: null,
-            musicEnabled: true,
+            enabled: true,
 
-            updateMusicForLevel(level) {
-                if (!this.musicEnabled) return;
-                
-                let trackToPlay;
-                if (level <= 19) trackToPlay = 'hiphop';
-                else if (level <= 39) trackToPlay = 'alien';
-                else if (level <= 69) trackToPlay = 'realm';
-                else if (level <= 89) trackToPlay = 'hangover';
-                else trackToPlay = 'purgatory';
+            updateForLevel(level) {
+                if (!this.enabled) return;
 
-                if (this.currentTrack !== trackToPlay) {
-                    console.log(`Changing music track to ${trackToPlay}`);
-                    if (this.gameMusic) {
-                        this.gameMusic.pause();
-                        this.gameMusic = null;
-                    }
+                let trackPath;
+                if (level <= 19) trackPath = './sound/music-1-19-hiphop.mp3';
+                else if (level <= 39) trackPath = './sound/music-20-39-alien.mp3';
+                else if (level <= 69) trackPath = './sound/music-40-69-realm.mp3';
+                else if (level <= 89) trackPath = './sound/music-70-89-Hangover.mp3';
+                else trackPath = './sound/music-90-100-purgatory.mp3';
 
-                    try {
-                        this.gameMusic = new Audio(this.musicTracks[trackToPlay]);
-                        this.gameMusic.loop = true;
-                        this.currentTrack = trackToPlay;
-                        
-                        if (!window.paused && !window.won) {
-                            this.gameMusic.play().catch(e => console.log("Music play error:", e));
-                        }
-                    } catch (e) {
-                        console.error("Error creating audio:", e);
+                if (trackPath !== this.currentTrack) {
+                    this.stop();
+                    this.currentTrack = trackPath;                    this.currentMusic = new Audio(trackPath);
+                    this.currentMusic.loop = true;
+                    this.currentMusic.volume = 0.7; // Set default volume to 70%
+                    
+                    if (!window.paused && !window.won) {
+                        this.play();
                     }
                 }
             },
 
-            toggleMusic(shouldPlay) {
-                if (shouldPlay && this.musicEnabled) {
-                    if (this.gameMusic) {
-                        this.gameMusic.play().catch(e => console.log("Music play error:", e));
-                    }
-                } else if (this.gameMusic) {
-                    this.gameMusic.pause();
+            play() {
+                if (this.enabled && this.currentMusic) {
+                    this.currentMusic.play().catch(e => console.log('Music play error:', e));
                 }
             },
 
-            stopMusic() {
-                if (this.gameMusic) {
-                    this.gameMusic.pause();
-                    this.gameMusic = null;
-                    this.currentTrack = null;
+            stop() {
+                if (this.currentMusic) {
+                    this.currentMusic.pause();
+                    this.currentMusic = null;
                 }
+                this.currentTrack = null;
             },
 
-            playSoundEffect(soundPath, volume = 1.0) {
-                try {
-                    const sound = new Audio(soundPath);
-                    sound.volume = volume;
-                    sound.play().catch(e => console.log("Sound effect play error:", e));
-                } catch (e) {
-                    console.error("Error playing sound effect:", e);
+            toggle(shouldPlay) {
+                if (shouldPlay) {
+                    this.play();
+                } else if (this.currentMusic) {
+                    this.currentMusic.pause();
                 }
+            },            playEffect(soundPath) {
+                if (this.enabled) {
+                    const effect = new Audio(soundPath);
+                    effect.volume = 0.5; // Set effects volume to 50%
+                    effect.play().catch(e => console.log('Sound effect error:', e));
+                }
+            }
+        };        // Initialize music system
+        document.addEventListener('DOMContentLoaded', () => {
+            GameMusic.enabled = true;
+            GameMusic.updateForLevel(level);
+        });
+
+        // Make music functions globally available
+        window.updateMusicForLevel = (level) => GameMusic.updateForLevel(level);
+        window.toggleMusic = (shouldPlay) => GameMusic.toggle(shouldPlay);
+        window.stopMusic = () => GameMusic.stop();
+        window.playSound = (path) => GameMusic.playEffect(path);        // Add interaction handlers for first user input to start music
+        const startMusicOnInteraction = () => {
+            if (GameMusic.enabled && !window.paused && !window.won) {
+                GameMusic.play();
+                // Remove the handlers once music starts
+                document.removeEventListener('click', startMusicOnInteraction);
+                document.removeEventListener('keydown', startMusicOnInteraction);
             }
         };
 
-        // Make music functions globally available
-        window.updateMusicForLevel = (level) => BonkMusic.updateMusicForLevel(level);
-        window.toggleMusic = (shouldPlay) => BonkMusic.toggleMusic(shouldPlay);
-        window.stopMusic = () => BonkMusic.stopMusic();
-        window.playSound = (path, vol) => BonkMusic.playSoundEffect(path, vol);
+        // Listen for either click or keypress
+        document.addEventListener('click', startMusicOnInteraction);
+        document.addEventListener('keydown', startMusicOnInteraction);
     </script>
     <style>
         body { background: #222; color: #fff; text-align: center; }
@@ -515,11 +514,8 @@
             ghost2 = null;
             
             // Handle special levels (30,40,50 for ghost devil, 60,70,80 for real devil)
-            if ([30, 40, 50, 60, 70, 80].includes(level) && accessibleCells.length > 3) {
-                // Play suspense music
-                if (BonkMusic.musicEnabled) {
-                    BonkMusic.playSoundEffect('./sound/suspense.mp3');
-                }
+            if ([30, 40, 50, 60, 70, 80].includes(level) && accessibleCells.length > 3) {                // Play suspense music
+                GameMusic.playEffect('./sound/suspense.mp3');
                 
                 // For levels 60,70,80 we'll add the real devil later
                 if (level < 60) {
@@ -723,7 +719,7 @@
                 updateLivesDisplay();
                 
                 // Play life pickup sound
-                BonkMusic.playSoundEffect('./sound/life.mp3');
+                GameMusic.playEffect('./sound/life.mp3');
             } else {
                 score += 100;
                 document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
@@ -750,9 +746,8 @@
                         coins.splice(i, 1);
                         score++;
                         document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
-                        
-                        // Play coin sound
-                        BonkMusic.playSoundEffect('./sound/coin.mp3');
+                          // Play coin sound
+                        GameMusic.playEffect('./sound/coin.mp3');
                         break;
                     }
                 }
@@ -770,15 +765,13 @@
                     if (prizes[i].x === player.x && prizes[i].y === player.y) {                        prizes.splice(i, 1);
                         score += 5; // El premio otorga 5 puntos
                         document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
-                        
-                        // Play coin sound for prize
-                        BonkMusic.playSoundEffect('./sound/coin.mp3');
+                          // Play coin sound for prize
+                        GameMusic.playEffect('./sound/coin.mp3');
                         break;
                     }
                 }
                   // Pasar al siguiente nivel
-                if (coins.length === 0) {
-                    if (level >= 100) {
+                if (coins.length === 0) {                    if (level >= 100) {
                         winGame();
                         return;
                     }
@@ -790,6 +783,9 @@
                     }
                     maze = generateMazeAI(level);
                     document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
+                    
+                    // Update music and play level transition sound
+                    GameMusic.updateForLevel(level);
                 }
             }
             draw();
@@ -818,19 +814,31 @@
                 togglePause();
                 return;
             }
-            
-            // Toggle music with M key
+              // Toggle music with M key
             if (e.key === 'm' || e.key === 'M') {
-                BonkMusic.musicEnabled = !BonkMusic.musicEnabled;
-                const musicToggle = document.getElementById('musicToggle');
-                musicToggle.classList.toggle('off', !BonkMusic.musicEnabled);
-                musicToggle.querySelector('span').textContent = `Music: ${BonkMusic.musicEnabled ? 'On' : 'Off'}`;
-                if (BonkMusic.musicEnabled) {
+                GameMusic.enabled = !GameMusic.enabled;
+        const musicToggle = document.getElementById('musicToggle');
+        musicToggle.classList.toggle('off', !GameMusic.enabled);
+        musicToggle.querySelector('span').textContent = `Music: ${GameMusic.enabled ? 'On' : 'Off'}`;
+        // Add click handler for music toggle button
+        musicToggle.addEventListener('click', () => {
+            GameMusic.enabled = !GameMusic.enabled;
+            musicToggle.classList.toggle('off', !GameMusic.enabled);
+            musicToggle.querySelector('span').textContent = `Music: ${GameMusic.enabled ? 'On' : 'Off'}`;
+            if (GameMusic.enabled) {
+                if (!paused && !won) {
+                    GameMusic.updateForLevel(level);
+                }
+            } else {
+                GameMusic.stop();
+            }
+        });
+                if (GameMusic.enabled) {
                     if (!paused && !won) {
-                        BonkMusic.updateMusicForLevel(level);
+                        GameMusic.updateForLevel(level);
                     }
                 } else {
-                    BonkMusic.stopMusic();
+                    GameMusic.stop();
                 }
                 return;
             }
@@ -881,17 +889,15 @@
             paused = (force === null) ? !paused : force;
             document.getElementById('pausedMsg').style.display = paused ? 'block' : 'none';
             
-            // Toggle music based on pause state only if music is enabled
-            if (BonkMusic.musicEnabled) {
-                BonkMusic.toggleMusic(!paused);
-            }
-        }        function winGame() {
+            // Toggle music based on pause state
+            GameMusic.toggle(!paused);
+        }function winGame() {
             won = true;
             document.getElementById('winText').innerHTML = `You've won! Well done!<br>Your Score: <b>${score}</b>`;
             document.getElementById('winMenu').style.display = 'flex';
             
             // Stop the music when game is won
-            BonkMusic.stopMusic();
+            GameMusic.stop();
         }function takeScreenshot() {
             // Hide screenshot button temporarily for the capture
             const screenshotBtn = document.querySelector('#screenshotBtn');
@@ -967,12 +973,9 @@
             document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
             document.getElementById('winMenu').style.display = 'none';
             updateLivesDisplay();
-            
-            // Reset music when starting a new game if music is enabled
-            if (BonkMusic.musicEnabled) {
-                BonkMusic.stopMusic();
-                BonkMusic.updateMusicForLevel(level);
-            }
+              // Reset music when starting a new game
+            GameMusic.stop();
+            GameMusic.updateForLevel(level);
             
             draw();
         }
@@ -1139,11 +1142,9 @@
         }        function tryDraw() {
             if (boncImg.complete && coinImg.complete && ghostImg.complete && lifeImg.complete && prizeImg.complete && devilImg.complete) {
                 maze = generateMazeAI(level);
-                updateLivesDisplay();
-                // Initialize music for starting level
-                if (BonkMusic.musicEnabled) {
-                    BonkMusic.updateMusicForLevel(level);
-                }
+                updateLivesDisplay();                // Initialize music and UI
+                GameMusic.updateForLevel(level);
+                document.getElementById('musicToggle').classList.toggle('off', !GameMusic.enabled);
                 draw();
                 animate();
             } else {
