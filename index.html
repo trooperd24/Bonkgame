@@ -135,27 +135,74 @@
         // Listen for either click or keypress to initialize audio
         document.addEventListener('click', startMusicOnInteraction);
         document.addEventListener('keydown', startMusicOnInteraction);
-    </script>    <style>
-        html, body {
+    </script>    <style>        html, body {
             background: #222;
             color: #fff;
             text-align: center;
             margin: 0;
             padding: 0;
-            height: 100%;
-            overflow: hidden; /* Prevent scrolling on mobile */
-            touch-action: none; /* Disable browser handling of touch gestures */
+            min-height: 100%;
+            overflow-x: hidden;
         }
-        canvas { background: #111; display: block; margin: 10px auto; border: 2px solid #fff; }
-        #score { font-size: 1.5em; margin: 10px; }
+        canvas { 
+            background: #111; 
+            display: block; 
+            margin: 10px auto; 
+            border: 2px solid #fff;
+        }
+        
+        @media (max-width: 768px) {
+            html, body {
+                height: 100vh;
+                width: 100vw;
+                overflow: hidden;
+                touch-action: none;
+                position: fixed;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+            }
+            canvas {
+                margin: 0 auto;
+                max-width: 95vw;
+                max-height: 60vh;
+                object-fit: contain;
+            }
+        }        #score { 
+            font-size: 1.5em;
+            margin: 10px;
+        }
         #scoreText { vertical-align: middle; }
-        #lives img { width:28px; vertical-align:middle; margin-left:2px; }
-        h1 {
+        #lives img { 
+            width: 28px;
+            vertical-align: middle; 
+            margin-left: 2px; 
+        }
+        
+        @media (max-width: 768px) {
+            #score {
+                font-size: min(1.5em, 5vw);
+                margin: 5px;
+                flex-shrink: 0;
+            }
+            #lives img {
+                width: min(28px, 7vw);
+            }
+        }        h1 {
             color: #FFD600;
             font-size: 3em;
             margin-top: 20px;
             margin-bottom: 10px;
             letter-spacing: 2px;
+        }
+        
+        @media (max-width: 768px) {
+            h1 {
+                font-size: min(3em, 8vw);
+                margin-top: 10px;
+                margin-bottom: 5px;
+            }
         }
         /* Mobile controls */        .game-container {
             position: relative;
