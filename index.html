@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
+<head>    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Bonk: the Game</title>
     <script>
         // Game Music System
@@ -135,9 +135,17 @@
         // Listen for either click or keypress to initialize audio
         document.addEventListener('click', startMusicOnInteraction);
         document.addEventListener('keydown', startMusicOnInteraction);
-    </script>
-    <style>
-        body { background: #222; color: #fff; text-align: center; }
+    </script>    <style>
+        html, body {
+            background: #222;
+            color: #fff;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden; /* Prevent scrolling on mobile */
+            touch-action: none; /* Disable browser handling of touch gestures */
+        }
         canvas { background: #111; display: block; margin: 10px auto; border: 2px solid #fff; }
         #score { font-size: 1.5em; margin: 10px; }
         #scoreText { vertical-align: middle; }
@@ -148,6 +156,103 @@
             margin-top: 20px;
             margin-bottom: 10px;
             letter-spacing: 2px;
+        }
+        /* Mobile controls */        .game-container {
+            position: relative;
+            display: inline-block;
+            margin: 0 auto;
+            overflow: visible;
+        }.mobile-controls {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            pointer-events: none; /* Allow clicks to pass through to the canvas */
+        }        .direction-btn {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background-color: rgba(255, 214, 0, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            pointer-events: auto; /* Make buttons clickable */
+            z-index: 5;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+            transition: background-color 0.15s, transform 0.15s;
+        }
+        .direction-btn:active {
+            background-color: rgba(255, 214, 0, 0.225);
+            transform: scale(0.95);
+        }
+        .direction-btn img {
+            width: 30px;
+            height: 30px;
+            display: block; /* Prevents extra spacing */
+            transition: transform 0.2s;
+            opacity: 0.5; /* 50% transparent arrows */
+        }#btn-right {
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        #btn-right img {
+            transform: rotate(0deg);
+        }
+        #btn-left {
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        #btn-left img {
+            transform: rotate(180deg);
+        }        #btn-up {
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        #btn-up img {
+            transform: rotate(270deg);
+        }
+        #btn-down {
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        #btn-down img {
+            transform: rotate(90deg);
+        }
+        
+        /* Mobile optimization */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2em;
+                margin-top: 10px;
+                margin-bottom: 5px;
+            }
+            
+            #score {
+                font-size: 1.2em;
+                margin: 5px;
+            }            
+            .direction-btn {
+                background-color: rgba(255, 214, 0, 0.2);
+            }
+            
+            #musicToggle {
+                top: 5px;
+                right: 5px;
+                padding: 5px 8px;
+                font-size: 12px;
+            }
+            
+            #musicToggle img {
+                width: 20px;
+                height: 20px;
+            }
         }
         #pausedMsg {
             display: none;
@@ -267,9 +372,23 @@
     <div id="score">
         <span id="scoreText">Score: 0 | Level: 1</span>
         <span id="lives"></span>
+    </div>    <div id="maxLivesMsg">Reached Max lives. Turned into points, well done!</div>    <div class="game-container">
+        <canvas id="gameCanvas" width="480" height="480"></canvas>
+        <div class="mobile-controls">
+            <div class="direction-btn" id="btn-up">
+                <img src="./assets/arrow.png" alt="Up">
+            </div>
+            <div class="direction-btn" id="btn-right">
+                <img src="./assets/arrow.png" alt="Right">
+            </div>
+            <div class="direction-btn" id="btn-down">
+                <img src="./assets/arrow.png" alt="Down">
+            </div>
+            <div class="direction-btn" id="btn-left">
+                <img src="./assets/arrow.png" alt="Left">
+            </div>
+        </div>
     </div>
-    <div id="maxLivesMsg">Reached Max lives. Turned into points, well done!</div>
-    <canvas id="gameCanvas" width="480" height="480"></canvas>
     <div id="credits">
         <div id="leftCredit"><a href="https://bonkscoin.io/" target="_blank">BonkCoin</a></div>
         <div id="rightCredit">By TrooperD</div>
@@ -404,12 +523,15 @@
             // If nothing is found, fallback to (1,1)
             return best || { x: 1, y: 1 };
         }
-        
-        function generateMazeAI(level) {
+          function generateMazeAI(level) {
             // Cap map size growth at level 81 (15 + Math.floor((81-1)/10) = 15 + 8 = 23)
             tilesX = tilesY = 15 + Math.min(8, Math.floor((level-1)/10));
             canvas.width = tilesX * tileSize;
             canvas.height = tilesY * tileSize;
+            
+            // Update mobile controls position when canvas size changes
+            updateMobileControlsPosition();
+            
             let m = Array.from({length: tilesY}, (_, y) =>
                 Array.from({length: tilesX}, (_, x) =>
                     (x === 0 || y === 0 || x === tilesX-1 || y === tilesY-1) ? 1 : 0
@@ -996,10 +1118,98 @@
                 if (moveInterval) clearInterval(moveInterval);
             }
         });
-        
-        document.addEventListener('mousedown', () => {
+          document.addEventListener('mousedown', () => {
             if (paused) togglePause(false);
         });
+          // Mobile control handlers
+        function setupMobileControls() {
+            const btnUp = document.getElementById('btn-up');
+            const btnRight = document.getElementById('btn-right');
+            const btnDown = document.getElementById('btn-down');
+            const btnLeft = document.getElementById('btn-left');
+            
+            // Update control positions based on canvas size
+            updateMobileControlsPosition();
+            
+            // Helper function to handle button events
+            function handleDirectionButton(element, direction) {
+                // Touch start / mouse down - start moving
+                const startHandler = (e) => {
+                    e.preventDefault(); // Prevent scrolling on touch devices
+                    if (won || paused) return;
+                    
+                    moveDir = direction;
+                    movePlayer(direction);
+                    if (moveInterval) clearInterval(moveInterval);
+                    moveInterval = setInterval(() => movePlayer(direction), 100);
+                };
+                
+                // Touch end / mouse up - stop moving
+                const endHandler = () => {
+                    if (moveDir === direction) {
+                        moveDir = null;
+                        if (moveInterval) clearInterval(moveInterval);
+                    }
+                };
+                
+                // Add event listeners for both mouse and touch events
+                element.addEventListener('mousedown', startHandler);
+                element.addEventListener('touchstart', startHandler);
+                
+        // Stop movement when touch/click ends
+                element.addEventListener('mouseup', endHandler);
+                element.addEventListener('mouseleave', endHandler);
+                element.addEventListener('touchend', endHandler);
+                element.addEventListener('touchcancel', endHandler);
+            }
+            
+            // Set up each directional button
+            handleDirectionButton(btnUp, 'up');
+            handleDirectionButton(btnRight, 'right');
+            handleDirectionButton(btnDown, 'down');
+            handleDirectionButton(btnLeft, 'left');
+        }
+        
+        // Function to update mobile controls position based on canvas size
+        function updateMobileControlsPosition() {
+            const canvas = document.getElementById('gameCanvas');
+            const btnUp = document.getElementById('btn-up');
+            const btnRight = document.getElementById('btn-right');
+            const btnDown = document.getElementById('btn-down');
+            const btnLeft = document.getElementById('btn-left');
+            
+            // Check if elements exist
+            if (!canvas || !btnUp || !btnRight || !btnDown || !btnLeft) return;
+            
+            // Responsive positioning based on canvas size
+            const margin = Math.max(20, Math.min(60, canvas.width / 10)); // Scale margin with canvas size
+              // Position buttons on the outer edges of canvas
+            btnRight.style.right = `10px`;
+            btnLeft.style.left = `10px`;
+            btnUp.style.top = `10px`;
+            btnDown.style.bottom = `10px`;
+              // Adjust button size based on canvas
+            const buttonSize = Math.max(40, Math.min(80, canvas.width / 8));
+            const arrowSize = buttonSize * 0.6;
+            
+            [btnUp, btnRight, btnDown, btnLeft].forEach(btn => {
+                btn.style.width = `${buttonSize}px`;
+                btn.style.height = `${buttonSize}px`;
+                
+                // Adjust arrow size
+                const img = btn.querySelector('img');
+                if (img) {
+                    img.style.width = `${arrowSize}px`;
+                    img.style.height = `${arrowSize}px`;
+                }
+            });
+            
+            // Ensure horizontal centering of buttons
+            btnUp.style.left = `50%`;
+            btnDown.style.left = `50%`;
+            btnRight.style.top = `50%`;
+            btnLeft.style.top = `50%`;
+        }
         
         function togglePause(force = null) {
             if (won) return;
@@ -1273,8 +1483,7 @@
             }
             requestAnimationFrame(animate);
         }
-        
-        function tryDraw() {
+          function tryDraw() {
             if (boncImg.complete && coinImg.complete && ghostImg.complete && lifeImg.complete && prizeImg.complete && devilImg.complete) {
                 maze = generateMazeAI(level);
                 updateLivesDisplay();
@@ -1283,6 +1492,12 @@
                 document.getElementById('musicToggle').classList.toggle('off', !GameMusic.enabled);
                 draw();
                 animate();
+                
+        // Initialize mobile controls
+                setupMobileControls();
+                
+                // Make controls responsive on window resize
+                window.addEventListener('resize', updateMobileControlsPosition);
             } else {
                 setTimeout(tryDraw, 50);
             }
