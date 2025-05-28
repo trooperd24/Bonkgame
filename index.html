@@ -135,74 +135,27 @@
         // Listen for either click or keypress to initialize audio
         document.addEventListener('click', startMusicOnInteraction);
         document.addEventListener('keydown', startMusicOnInteraction);
-    </script>    <style>        html, body {
+    </script>    <style>
+        html, body {
             background: #222;
             color: #fff;
             text-align: center;
             margin: 0;
             padding: 0;
-            min-height: 100%;
-            overflow-x: hidden;
+            height: 100%;
+            overflow: hidden; /* Prevent scrolling on mobile */
+            touch-action: none; /* Disable browser handling of touch gestures */
         }
-        canvas { 
-            background: #111; 
-            display: block; 
-            margin: 10px auto; 
-            border: 2px solid #fff;
-        }
-        
-        @media (max-width: 768px) {
-            html, body {
-                height: 100vh;
-                width: 100vw;
-                overflow: hidden;
-                touch-action: none;
-                position: fixed;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-            }
-            canvas {
-                margin: 0 auto;
-                max-width: 95vw;
-                max-height: 60vh;
-                object-fit: contain;
-            }
-        }        #score { 
-            font-size: 1.5em;
-            margin: 10px;
-        }
+        canvas { background: #111; display: block; margin: 10px auto; border: 2px solid #fff; }
+        #score { font-size: 1.5em; margin: 10px; }
         #scoreText { vertical-align: middle; }
-        #lives img { 
-            width: 28px;
-            vertical-align: middle; 
-            margin-left: 2px; 
-        }
-        
-        @media (max-width: 768px) {
-            #score {
-                font-size: min(1.5em, 5vw);
-                margin: 5px;
-                flex-shrink: 0;
-            }
-            #lives img {
-                width: min(28px, 7vw);
-            }
-        }        h1 {
+        #lives img { width:28px; vertical-align:middle; margin-left:2px; }
+        h1 {
             color: #FFD600;
             font-size: 3em;
             margin-top: 20px;
             margin-bottom: 10px;
             letter-spacing: 2px;
-        }
-        
-        @media (max-width: 768px) {
-            h1 {
-                font-size: min(3em, 8vw);
-                margin-top: 10px;
-                margin-bottom: 5px;
-            }
         }
         /* Mobile controls */        .game-container {
             position: relative;
@@ -220,7 +173,7 @@
             position: absolute;
             width: 50px;
             height: 50px;
-            background-color: rgba(255, 214, 0, 0.2);
+            background-color: rgba(255, 214, 0, 0.14); /* 0.2 * 0.7 = 0.14 for 30% more transparent */
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -232,7 +185,7 @@
             transition: background-color 0.15s, transform 0.15s;
         }
         .direction-btn:active {
-            background-color: rgba(255, 214, 0, 0.225);
+            background-color: rgba(255, 214, 0, 0.1575); /* 0.225 * 0.7 = 0.1575 */
             transform: scale(0.95);
         }
         .direction-btn img {
@@ -240,7 +193,7 @@
             height: 30px;
             display: block; /* Prevents extra spacing */
             transition: transform 0.2s;
-            opacity: 0.5; /* 50% transparent arrows */
+            opacity: 0.5; /* Restore to original value */
         }#btn-right {
             right: 10px;
             top: 50%;
@@ -286,7 +239,7 @@
                 margin: 5px;
             }            
             .direction-btn {
-                background-color: rgba(255, 214, 0, 0.2);
+                background-color: rgba(255, 214, 0, 0.14); /* 0.2 * 0.7 = 0.14 */
             }
             
             #musicToggle {
@@ -478,10 +431,34 @@
         prizeImg.src = './assets/prize.png';
         const devilImg = new Image();
         devilImg.src = './assets/devil.png';
+        const backgroundImg = new Image();
+        backgroundImg.src = './assets/background.jpg';
+
+        // --- Audio Context and Effects for Prize Sound ---
+        let audioCtx = null;
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+            console.warn("Web Audio API is not supported in this browser.");
+        }
+
+        function playPrizePickupSound() {
+            if (!GameMusic.enabled || !audioCtx) return;
+            // Load the dedicated prize sound effect
+            GameMusic.loadSound('./sound/prize.mp3', (buffer) => {
+                const source = audioCtx.createBufferSource();
+                source.buffer = buffer;
+                
+                // No need for detune/pitch shift as we are using a dedicated sound file
+
+                source.connect(audioCtx.destination);
+                source.start(0);
+            });
+        }
 
         // Game parameters
         let tileSize = 32;
-        let tilesX = 15, tilesY = 15;
+        let tilesX = 11, tilesY = 11; // Start with 11 columns, 11 rows (perfect square)
         let score = 0, level = 1;
         let won = false;
         let paused = false;
@@ -496,6 +473,12 @@
         let enemy = { x: 2, y: 2 };
         let ghost2 = null; // Segundo fantasma (desde nivel 20)
         let devil = null; // El demonio (aparece desde nivel 90)
+
+        // Dynamic Obstacles Configuration
+        const DYNAMIC_OBSTACLE_INTERVAL = 2000; // Obstacles toggle every 2 seconds
+        let dynamicObstaclesList = [];
+        let dynamicObstaclesVisible = true;
+        let lastObstacleToggleTime = 0;
 
         function updateLivesDisplay() {
             const livesDiv = document.getElementById('lives');
@@ -571,8 +554,13 @@
             return best || { x: 1, y: 1 };
         }
           function generateMazeAI(level) {
-            // Cap map size growth at level 81 (15 + Math.floor((81-1)/10) = 15 + 8 = 23)
-            tilesX = tilesY = 15 + Math.min(8, Math.floor((level-1)/10));
+            let baseGrowth = Math.min(8, Math.floor((level-1)/10));
+            tilesX = 11 + baseGrowth;
+            tilesY = 11 + baseGrowth;
+            // Additional horizontal growth at levels 5, 15, 25
+            if (level >= 5) tilesX++;
+            if (level >= 15) tilesX++;
+            if (level >= 25) tilesX++;
             canvas.width = tilesX * tileSize;
             canvas.height = tilesY * tileSize;
             
@@ -589,7 +577,7 @@
             const centerX = Math.floor(tilesX / 2);
             const centerY = Math.floor(tilesY / 2);
             
-            let numObstacles = Math.floor(level * 1.5) + 8;
+            let numObstacles = Math.floor(level * 1.0) + 5; // Obstacles are more scarce
             let placed = 0;
             let tries = 0;
             while (placed < numObstacles && tries < numObstacles * 20) {
@@ -626,6 +614,32 @@
             const playerStart = findPlayerStart(m);
             player = { x: playerStart.x, y: playerStart.y, dir: 'right', lastDir: 'right' };
             initialPlayerPos = { ...player };
+
+            // --- Dynamic Obstacles Initialization (Level 22+) ---
+            dynamicObstaclesList = [];
+            if (level >= 22) {
+                const obstacleCandidates = [];
+                for (let y = 1; y < tilesY - 1; y++) {
+                    for (let x = 1; x < tilesX - 1; x++) {
+                        // Must be a wall, not adjacent to player start, and not on border
+                        if (m[y][x] === 1 && 
+                            (Math.abs(x - player.x) > 1 || Math.abs(y - player.y) > 1) &&
+                            x > 0 && x < tilesX - 1 && y > 0 && y < tilesY - 1) {
+                            obstacleCandidates.push({x, y});
+                        }
+                    }
+                }
+
+                // Select up to 1-2 dynamic obstacles, or fewer if not many candidates
+                const numDynamicObstacles = Math.min(Math.floor(Math.random() * 2) + 1, obstacleCandidates.length);
+                for (let i = 0; i < numDynamicObstacles; i++) {
+                    if (obstacleCandidates.length === 0) break;
+                    const randIdx = Math.floor(Math.random() * obstacleCandidates.length);
+                    const chosenObstacle = obstacleCandidates.splice(randIdx, 1)[0];
+                    dynamicObstaclesList.push(chosenObstacle);
+                    // Initially, these are part of the maze (walls)
+                }
+            }
 
             // --- BFS to find accessible cells ---
             function getAccessibleCells(startX, startY) {
@@ -682,7 +696,7 @@
                     coins.push({x, y});
                 }
             } else {
-                // For levels 23+, use the modified coin generation system
+                // For levels > 25, use the modified coin generation system
                 // Coin generation - with caps based on level
                 let coinProb = Math.min(0.05 + level * 0.005, 0.15);
                 
@@ -701,17 +715,17 @@
                 
                 // Special case for level 100 - cap at 20 coins
                 if (level === 100) {
-                    if (coins.length > 20) {
+                    if (coins.length > 20) { // Remains 20
                         coins = coins
                             .sort(() => Math.random() - 0.5)
-                            .slice(0, 20);
+                            .slice(0, 20); // Remains 20
                     }
                 } else {
-                    // For all other levels cap at 15 coins
-                    if (coins.length > 15) {
+                    // For all other levels > 25 (and not 100), cap at 10 coins
+                    if (coins.length > 10) { // Changed from 15 to 10
                         coins = coins
                             .sort(() => Math.random() - 0.5)
-                            .slice(0, 15);
+                            .slice(0, 10); // Changed from 15 to 10
                     }
                 }
             }
@@ -759,16 +773,92 @@
             // Enemy generation - only from level 4 onwards
             enemy = null;
             if (level >= 4) {
-                // Enemy initial position: the accessible cell furthest from the player
-                let maxDist = -1, enemyPos = accessibleCells[0];
-                for (const [x, y] of accessibleCells) {
-                    let dist = Math.abs(x - player.x) + Math.abs(y - player.y);
-                    if (dist > maxDist) {
-                        maxDist = dist;
-                        enemyPos = [x, y];
+                // Primary attempt: Use accessibleCells
+                let availableEnemyCells = accessibleCells.filter(([x, y]) => {
+                    if (x === player.x && y === player.y) return false; // Not on player
+                    if (coins.some(c => c.x === x && c.y === y)) return false; // Not on coins
+                    if (prizes.some(p => p.x === x && p.y === y)) return false; // Not on prizes
+
+                    // Apply minimum distance rules ONLY for levels >= 20 in this initial filter
+                    if (level >= 20) {
+                        if (level < 25) { // For levels 20-24
+                            if (Math.abs(x - player.x) + Math.abs(y - player.y) < 3) return false; // Min Manhattan distance 3
+                        } else { // For levels 25+
+                            if (Math.abs(y - player.y) < 4) return false; // At least 4 rows away
+                        }
+                    }
+                    return true;
+                });
+
+                if (availableEnemyCells.length > 0) {
+                    if (level < 20) { // Levels 4-19: find the farthest cell from availableEnemyCells
+                        let farthestCell = availableEnemyCells[0];
+                        let maxDist = Math.abs(farthestCell[0] - player.x) + Math.abs(farthestCell[1] - player.y);
+
+                        for (let i = 1; i < availableEnemyCells.length; i++) {
+                            const cell = availableEnemyCells[i];
+                            const dist = Math.abs(cell[0] - player.x) + Math.abs(cell[1] - player.y);
+                            if (dist > maxDist) {
+                                maxDist = dist;
+                                farthestCell = cell;
+                            }
+                        }
+                        enemy = { x: farthestCell[0], y: farthestCell[1] };
+                    } else { // Levels >= 20: pick a random cell from the filtered list
+                        let [ex, ey] = availableEnemyCells[Math.floor(Math.random() * availableEnemyCells.length)];
+                        enemy = { x: ex, y: ey };
                     }
                 }
-                enemy = { x: enemyPos[0], y: enemyPos[1] };
+
+                // Fallback: if enemy is still null (e.g., availableEnemyCells was empty)
+                if (!enemy) {
+                    let fallbackCells = [];
+                    for (let r = 1; r < tilesY - 1; r++) {
+                        for (let c = 1; c < tilesX - 1; c++) {
+                            if (m[r][c] === 0 && (c !== player.x || r !== player.y)) { // Not a wall, not on player
+                                if (coins.some(coin => coin.x === c && coin.y === r)) continue; // Not on coins
+                                if (prizes.some(prize => prize.x === c && prize.y === r)) continue; // Not on prizes
+
+                                // Apply minimum distance rules ONLY for levels >= 20 for fallback candidates
+                                if (level >= 20) {
+                                    if (level < 25) { // Levels 20-24
+                                        if (Math.abs(c - player.x) + Math.abs(r - player.y) < 3) continue;
+                                    } else { // Levels 25+
+                                        if (Math.abs(r - player.y) < 4) continue;
+                                    }
+                                }
+                                fallbackCells.push([c, r]);
+                            }
+                        }
+                    }
+
+                    if (fallbackCells.length > 0) {
+                        if (level < 20) { // Levels 4-19: find the farthest cell from fallbackCells
+                            let farthestFallbackCell = fallbackCells[0];
+                            let maxDist = Math.abs(farthestFallbackCell[0] - player.x) + Math.abs(farthestFallbackCell[1] - player.y);
+                            for (let i = 1; i < fallbackCells.length; i++) {
+                                const cell = fallbackCells[i];
+                                const dist = Math.abs(cell[0] - player.x) + Math.abs(cell[1] - player.y);
+                                if (dist > maxDist) {
+                                    maxDist = dist;
+                                    farthestFallbackCell = cell;
+                                }
+                            }
+                            enemy = { x: farthestFallbackCell[0], y: farthestFallbackCell[1] };
+                        } else { // Levels >= 20: pick a random cell from the filtered fallback list
+                            let [ex, ey] = fallbackCells[Math.floor(Math.random() * fallbackCells.length)];
+                            enemy = { x: ex, y: ey };
+                        }
+                    } else {
+                        // Very last resort, place it adjacent to player if map is tiny/full
+                        enemy = { x: player.x + 1 < tilesX -1 ? player.x + 1 : player.x -1 , y: player.y };
+                         if (m[enemy.y][enemy.x] === 1) { // if that spot is a wall, try another
+                            enemy = { x: player.x, y: player.y + 1 < tilesY -1 ? player.y + 1 : player.y -1 };
+                         }
+                         // If still a wall, then no enemy
+                         if (m[enemy.y][enemy.x] === 1) enemy = null;
+                    }
+                }
             }
             
             // Special ghosts at specific levels and standard second ghost
@@ -780,15 +870,22 @@
                 GameMusic.playEffect('./sound/suspense.mp3');
                 
                 // For levels 60,70,80 we'll add the real devil later
-                if (level < 60) {
-                    // Place the ghost with devil graphics
-                    let specialPos = accessibleCells.find(([x, y]) => 
-                        x !== player.x || y !== player.y
-                    );
-                    if (specialPos) {
+                if (level < 60) { // This covers 30, 40, 50 for special ghost2
+                    const minPlayerDistanceGhost2 = 4;
+                    const availableGhost2Cells = accessibleCells.filter(([x, y]) => {
+                        if (x === player.x && y === player.y) return false; // Not on player
+                        if (Math.abs(x - player.x) + Math.abs(y - player.y) < minPlayerDistanceGhost2) return false; // Min distance
+                        if (coins.some(c => c.x === x && c.y === y)) return false; // Not on coins
+                        if (prizes.some(p => p.x === x && p.y === y)) return false; // Not on prizes
+                        if (enemy && x === enemy.x && y === enemy.y) return false; // Not on first enemy
+                        return true;
+                    });
+
+                    if (availableGhost2Cells.length > 0) {
+                        let [gx, gy] = availableGhost2Cells[Math.floor(Math.random() * availableGhost2Cells.length)];
                         ghost2 = { 
-                            x: specialPos[0], 
-                            y: specialPos[1],
+                            x: gx, 
+                            y: gy,
                             isDevil: true // Flag to use devil graphics
                         };
                     }
@@ -796,68 +893,63 @@
             }
             // Regular ghost2 from level 20 if not a special level
             else if (level >= 20 && accessibleCells.length > 3) {
-                // Place on the opposite side (relative to the player)
-                let minDist = -1;
-                let ghost2Pos = null;
-                
-                // Calculate the vector from player to enemy
-                const vx = enemy.x - player.x;
-                const vy = enemy.y - player.y;
-                
-                // Find a cell that's in the opposite direction
-                for (const [x, y] of accessibleCells) {
-                    // Vector from player to this cell
-                    const wx = x - player.x;
-                    const wy = y - player.y;
-                    
-                    // Dot product - negative values indicate opposite directions
-                    const dotProduct = vx * wx + vy * wy;
-                    
-                    if (dotProduct < minDist) {
-                        minDist = dotProduct;
-                        ghost2Pos = [x, y];
+                const minPlayerDistanceGhost2 = 4;
+                let candidateCellsForGhost2 = accessibleCells.filter(([x, y]) => {
+                    if (x === player.x && y === player.y) return false; // Not on player
+                    if (Math.abs(x - player.x) + Math.abs(y - player.y) < minPlayerDistanceGhost2) return false; // Min distance
+                    if (enemy && x === enemy.x && y === enemy.y) return false; // Not on first enemy
+                    if (coins.some(c => c.x === x && c.y === y)) return false; // Not on coins
+                    if (prizes.some(p => p.x === x && p.y === y)) return false; // Not on prizes
+                    return true;
+                });
+
+                if (candidateCellsForGhost2.length > 0) {
+                    let ghost2Pos = null;
+                    if (enemy) { // Try to place opposite to enemy if enemy exists
+                        const vx = enemy.x - player.x;
+                        const vy = enemy.y - player.y;
+                        let minDotProduct = 0; // Looking for most negative dot product
+
+                        for (const [x, y] of candidateCellsForGhost2) {
+                            const wx = x - player.x;
+                            const wy = y - player.y;
+                            const dotProduct = vx * wx + vy * wy;
+                            if (dotProduct < minDotProduct) { 
+                                minDotProduct = dotProduct;
+                                ghost2Pos = [x, y];
+                            }
+                        }
                     }
-                }
-                
-                // If we don't find anything good, use the second furthest cell
-                if (ghost2Pos === null) {
-                    let distances = accessibleCells.map(([x, y]) => ({
-                        x, y, 
-                        dist: Math.abs(x - player.x) + Math.abs(y - player.y)
-                    }))
-                    .filter(cell => cell.x !== enemy.x || cell.y !== enemy.y)
-                    .sort((a, b) => b.dist - a.dist);
-                    
-                    if (distances.length > 0) {
-                        ghost2Pos = [distances[0].x, distances[0].y];
+
+                    if (ghost2Pos === null) { // If no opposite cell or no enemy, pick a random valid cell
+                        ghost2Pos = candidateCellsForGhost2[Math.floor(Math.random() * candidateCellsForGhost2.length)];
                     }
-                }
-                
-                if (ghost2Pos) {
-                    ghost2 = { x: ghost2Pos[0], y: ghost2Pos[1] };
+                    
+                    if (ghost2Pos) {
+                        ghost2 = { x: ghost2Pos[0], y: ghost2Pos[1] };
+                    }
                 }
             }
             
             // The Devil enemy appears at levels 60,70,80 and from level 90
             devil = null;
             if ((level >= 90 || [60, 70, 80].includes(level)) && accessibleCells.length > 3) {
-                // Find cells near the first ghost that are accessible
-                const nearGhostCells = accessibleCells.filter(([x, y]) => 
-                    Math.abs(x - enemy.x) <= 2 && 
-                    Math.abs(y - enemy.y) <= 2 &&
-                    !(x === enemy.x && y === enemy.y) // Not the same position as ghost1
-                );
+                const minPlayerDistanceDevil = 6; // Devil should be far
+                const availableDevilCells = accessibleCells.filter(([x, y]) => {
+                    if (x === player.x && y === player.y) return false; // Not on player
+                    if (Math.abs(x - player.x) + Math.abs(y - player.y) < minPlayerDistanceDevil) return false; // Min distance
+                    if (coins.some(c => c.x === x && c.y === y)) return false; // Not on coins
+                    if (prizes.some(p => p.x === x && p.y === y)) return false; // Not on prizes
+                    if (enemy && x === enemy.x && y === enemy.y) return false; // Not on first enemy
+                    if (ghost2 && x === ghost2.x && y === ghost2.y) return false; // Not on second ghost
+                    return true;
+                });
                 
-                if (nearGhostCells.length > 0) {
-                    // Pick a random position near the ghost
-                    const randomIndex = Math.floor(Math.random() * nearGhostCells.length);
-                    const [x, y] = nearGhostCells[randomIndex];
-                    // Track the last move time for slower movement plus directions history
+                if (availableDevilCells.length > 0) {
+                    const [dx, dy] = availableDevilCells[Math.floor(Math.random() * availableDevilCells.length)];
                     devil = { 
-                        x, y, 
+                        x: dx, y: dy, 
                         lastMoveTime: 0, 
-                        // Store last positions to avoid getting stuck in a loop
-                        lastPositions: [] 
                     }; 
                 }
             }
@@ -869,12 +961,62 @@
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
+            // --- Handle Dynamic Obstacles (Level 22+) ---
+            const nowForDynamic = Date.now();
+            if (level >= 22 && dynamicObstaclesList.length > 0) {
+                if (nowForDynamic - lastObstacleToggleTime > DYNAMIC_OBSTACLE_INTERVAL) {
+                    dynamicObstaclesVisible = !dynamicObstaclesVisible;
+                    lastObstacleToggleTime = nowForDynamic;
+
+                    // Update the actual maze array (m) based on visibility
+                    // This is crucial for collision detection and pathfinding
+                    for (const obs of dynamicObstaclesList) {
+                        if (maze[obs.y] && maze[obs.y][obs.x] !== undefined) { // Check bounds
+                            // Player safety: if obstacle is reappearing and player is on it, delay
+                            if (dynamicObstaclesVisible && player.x === obs.x && player.y === obs.y) {
+                                // Don't turn it into a wall if player is there
+                                // It will try again on the next toggle
+                            } else {
+                                maze[obs.y][obs.x] = dynamicObstaclesVisible ? 1 : 0; // 1 for wall, 0 for path
+                            }
+                        }
+                    }
+                    // Recalculate accessible cells if obstacles changed, player might be trapped
+                    // or new paths opened. This is important for AI and item placement if done mid-level.
+                    // However, for simplicity, we'll assume AI adapts or player needs to be careful.
+                    // For a more robust solution, you might need to call getAccessibleCells and 
+                    // potentially re-evaluate enemy/item positions if they become invalid.
+                }
+            }
+            
+            // Draw background image first, scaled to cover canvas
+            if (backgroundImg.complete && backgroundImg.naturalWidth > 0) {
+                ctx.save(); // Save current context state
+                ctx.globalAlpha = 0.1; // Set transparency to 90% (0.1 opacity)
+                ctx.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height);
+                ctx.restore(); // Restore context state, so other elements are not transparent
+            }
+            
             // Draw maze
             for (let y = 0; y < tilesY; y++) {
                 for (let x = 0; x < tilesX; x++) {
-                    if (maze[y][x] === 1) {
-                        ctx.fillStyle = '#444';
-                        ctx.fillRect(x*tileSize, y*tileSize, tileSize, tileSize);
+                    if (maze[y][x] === 1) { // If it's a wall
+                        // Check if it's a dynamic obstacle and if it should be "invisible" but still collidable
+                        const isDynamic = dynamicObstaclesList.some(obs => obs.x === x && obs.y === y);
+                        if (isDynamic && !dynamicObstaclesVisible) {
+                            // If dynamic and currently invisible, draw as path (or with a subtle hint)
+                            // For now, it will look like a path, but collision is handled by maze[y][x] = 0 above
+                            // To make it visually disappear but still block, we'd draw nothing here
+                            // and ensure maze[y][x] remains 1 for collision.
+                            // Current implementation: it becomes a path visually and functionally.
+                            ctx.fillStyle = 'rgba(68, 68, 68, 0.3)'; // Slightly visible hint of where it was
+                            ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+                        } else {
+                            ctx.fillStyle = '#444'; // Wall color
+                            ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+                        }
+                    } else {
+                        // Path areas (maze[y][x] === 0) will show the backgroundImg
                     }
                 }
             }
@@ -902,7 +1044,6 @@
             
             // Draw prizes with pulsation effect (grows/shrinks)
             const prizeScaleFactor = 1 + Math.sin(now / 400) * 0.15; // Scale between 0.85 and 1.15
-            
             for (const prize of prizes) {
                 // Calculate size and offset to center the image when scaling
                 const prizeSize = (tileSize - 12) * prizeScaleFactor;
@@ -1002,7 +1143,7 @@
             }
         }
         
-        function movePlayer(dir) {
+        function movePlayer(dir = null) {
             if (won || paused) return;
             let dx = 0, dy = 0;
             if (dir === 'up') dy = -1;
@@ -1042,13 +1183,12 @@
                 
                 // Collect prize
                 for (let i = 0; i < prizes.length; i++) {
-                    if (prizes[i].x === player.x && prizes[i].y === player.y) {
-                        prizes.splice(i, 1);
+                    if (prizes[i].x === player.x && prizes[i].y === player.y) {                        prizes.splice(i, 1);
                         score += 5; // Prize gives 5 points
                         document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
                         
-                        // Play coin sound for prize
-                        GameMusic.playEffect('./sound/coin.mp3');
+                        // Play prize sound
+                        GameMusic.playEffect('./sound/prize.mp3');
                         break;
                     }
                 }
