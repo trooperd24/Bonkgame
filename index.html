@@ -462,7 +462,9 @@
                 source.connect(audioCtx.destination);
                 source.start(0);
             });
-        }        // Game parameters
+        }
+
+        // Game parameters
         let tileSize = 32;
         let tilesX = 11, tilesY = 11;
         let score = 0, level = 1;
@@ -470,7 +472,6 @@
         let paused = false;
         let lives = 3;
         const maxLives = 6;
-        let permanentFires = []; // New array for permanent fire obstacles
         let player = { x: 1, y: 1, dir: 'right' };
         let initialPlayerPos = { x: 1, y: 1, dir: 'right' };
         let maze = [];
@@ -2334,6 +2335,9 @@ function reconstructPath(cameFrom, current) {
                 }
                 draw();
                 animate();
+                
+                // Initialize mobile controls
+                setupMobileControls();
             } else {
                 setTimeout(tryDraw, 50);
             }
