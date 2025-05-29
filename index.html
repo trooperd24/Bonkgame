@@ -17,28 +17,30 @@
                 let trackPath;
                 let rangeStart = 1;
                 let rangeSize = 0;
-                
-                // Determine which track to play based on level
-                if (level <= 19) {
+                  // Determine which track to play based on level
+                if (level === 80) {
+                    trackPath = './sound/music-90-100-purgatory.mp3';
+                    rangeStart = 80;
+                    rangeSize = 1;
+                } else if (level <= 19) {
                     trackPath = './sound/music-1-19-hiphop.mp3';
                     rangeStart = 1;
                     rangeSize = 19;
                 } else if (level <= 39) {
                     trackPath = './sound/music-20-39-alien.mp3';
                     rangeStart = 20;
-                    rangeSize = 20;
-                } else if (level <= 69) {
+                    rangeSize = 20;                } else if (level <= 69) {
                     trackPath = './sound/music-40-69-realm.mp3';
                     rangeStart = 40;
                     rangeSize = 30;
-                } else if (level <= 89) {
+                } else if (level <= 79) {
                     trackPath = './sound/music-70-89-Hangover.mp3';
                     rangeStart = 70;
-                    rangeSize = 20;
-                } else {
+                    rangeSize = 10;
+                } else if (level === 80) {
                     trackPath = './sound/music-90-100-purgatory.mp3';
-                    rangeStart = 90;
-                    rangeSize = 11;
+                    rangeStart = 80;
+                    rangeSize = 1;
                 }
                 
                 // Calculate playback speed based on position in range
@@ -689,15 +691,15 @@
                             obstacleCandidates.push({x, y});
                         }
                     }
-                }
-
-                // Determine total obstacles based on level range
-                let totalObstacles;
-                if (level >= 90 && level <= 100) {
+                }                // Determine total obstacles based on level range
+                let totalObstacles;                if (level === 70) {
+                    // Special case for level 70: make 90% of obstacles dynamic
+                    totalObstacles = Math.min(Math.floor(obstacleCandidates.length * 0.99), 22); // Use 90% of available obstacles, max 12
+                } else if (level >= 90 && level <= 100) {
                     totalObstacles = 8;
                 } else if (level >= 71 && level <= 89) {
                     totalObstacles = 7;
-                } else if (level >= 56 && level <= 70) {
+                } else if (level >= 56 && level <= 69) {
                     totalObstacles = 6;
                 } else if (level >= 50 && level <= 55) {
                     totalObstacles = 5;
@@ -1085,6 +1087,41 @@
                 // Play suspense music
                 GameMusic.playEffect('./sound/suspense.mp3');
                 
+                // For level 80, add two regular ghosts and cloud enemy
+                if (level === 80) {
+                    const minPlayerDistance = 4;
+                    const availableEnemyCells = accessibleCells.filter(([x, y]) => {
+                        if (x === player.x && y === player.y) return false; // Not on player
+                        if (Math.abs(x - player.x) + Math.abs(y - player.y) < minPlayerDistance) return false; // Min distance
+                        if (coins.some(c => c.x === x && c.y === y)) return false; // Not on coins
+                        return true;
+                    });
+                    
+                    if (availableEnemyCells.length > 0) {
+                        // Spawn first ghost
+                        const [ex, ey] = availableEnemyCells[Math.floor(Math.random() * availableEnemyCells.length)];
+                        enemy = { x: ex, y: ey };
+                        
+                        // Spawn second ghost
+                        const availableGhost2Cells = availableEnemyCells.filter(([x, y]) => 
+                            x !== enemy.x || y !== enemy.y
+                        );
+                        
+                        if (availableGhost2Cells.length > 0) {
+                            const [gx, gy] = availableGhost2Cells[Math.floor(Math.random() * availableGhost2Cells.length)];
+                            ghost2 = { x: gx, y: gy };
+                        }
+                        
+                        // Spawn cloud enemy
+                        cloudEnemy = {
+                            x: player.x,
+                            y: Math.max(1, player.y - 4), // Start 4 tiles above player if possible
+                            lastMoveTime: 0,
+                            moveDelay: 1000 // Moves slowly
+                        };
+                    }
+                }
+
                 // For levels 60,70,80 we'll add the real devil later
                 if (level < 60) { // This covers 30, 40, 50 for special ghost2
                     const minPlayerDistanceGhost2 = 4;
@@ -1092,8 +1129,6 @@
                         if (x === player.x && y === player.y) return false; // Not on player
                         if (Math.abs(x - player.x) + Math.abs(y - player.y) < minPlayerDistanceGhost2) return false; // Min distance
                         if (coins.some(c => c.x === x && c.y === y)) return false; // Not on coins
-                        if (prizes.some(p => p.x === x && p.y === y)) return false; // Not on prizes
-                        if (enemy && x === enemy.x && y === enemy.y) return false; // Not on first enemy
                         return true;
                     });
 
@@ -1168,10 +1203,9 @@
                         lastMoveTime: 0, 
                     }; 
                 }
-            }
-
-            // Add cloud enemy initialization for level 51, 65, 66, 68, and 69
-            if ([51, 53, 56, 59, 61, 63, 65, 66, 68, 69].includes(level)) {
+                  // Level 80 enemy spawning is handled in the special levels section above
+            }            // Add cloud enemy initialization for level 51, 65, 66, 68, 69, and 80
+            if ([51, 53, 56, 59, 61, 63, 65, 66, 68, 69, 80].includes(level)) {
                 const availableCloudCells = accessibleCells.filter(([x, y]) => {
                     return x !== player.x || y !== player.y; // Not on player
                 });
@@ -1490,16 +1524,19 @@
                         }
                     }
                 }
-                
-                // Collect coins
+                  // Collect coins
                 for (let i = 0; i < coins.length; i++) {
                     if (coins[i].x === player.x && coins[i].y === player.y) {
                         coins.splice(i, 1);
                         score++;
                         document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
                         
-                        // Play coin sound
-                        GameMusic.playEffect('./sound/coin.mp3');
+                        // Play prize sound for last coin in level 80, otherwise regular coin sound
+                        if (level === 80 && coins.length === 0) {
+                            GameMusic.playEffect('./sound/prize.mp3');
+                        } else {
+                            GameMusic.playEffect('./sound/coin.mp3');
+                        }
                         break;
                     }
                 }
@@ -1538,16 +1575,16 @@
                         break;
                     }
                 }
-                
-                // Go to next level
+                  // Go to next level
                 if (coins.length === 0) {
-                    if (level >= 100) {
+                    // If we completed level 80, end the game
+                    if (level === 80) {
                         winGame();
                         return;
                     }
-                    // If next level would be greater than 100, set it exactly to 100
-                    if (level === 99) {
-                        level = 100;
+                    // If we're at level 79, go to the final level 80
+                    if (level === 79) {
+                        level = 80;
                     } else {
                         level++;
                     }
@@ -1556,6 +1593,18 @@
                     
                     // Update music and play level transition sound
                     GameMusic.updateForLevel(level);
+                    
+                    /* 
+                    // ORIGINAL CODE FOR LEVELS BEYOND 80 (commented out)
+                    if (level >= 100) {
+                        winGame();
+                        return;
+                    }
+                    // If next level would be greater than 100, set it exactly to 100
+                    if (level === 99) {
+                        level = 100;
+                    }
+                    */
                 }
             }
             draw();
@@ -1605,17 +1654,16 @@
                 }
                 return;
             }
-            
-            // Skip to next level with Ñ (but not beyond level 100)
+              // Skip to next level with Ñ (but not beyond level 80)
             if ((e.key === 'ñ' || e.key === 'Ñ') && !paused) {
-                if (level >= 100) {
-                    // If we're already at level 100 or higher, end the game
+                // If we're already at level 80, end the game
+                if (level === 80) {
                     winGame();
                     return;
                 }
-                // If next level would be 100, make sure it's exactly 100
-                if (level === 99) {
-                    level = 100;
+                // If next level would be 81, end the game instead
+                if (level === 79) {
+                    level = 80;
                 } else {
                     level++;
                 }
@@ -1652,6 +1700,7 @@
             }
         });
           document.addEventListener('mousedown', () => {
+
             if (paused) togglePause(false);
         });
           // Mobile control handlers
@@ -2064,11 +2113,11 @@
                         moveX = dx > 0 ? 1 : -1;
                     } else {
                         moveY = dy > 0 ? 1 : -1;
-                    }
-
-                    // Move without checking obstacles
-                    cloudEnemy.x += moveX;
-                    cloudEnemy.y += moveY;
+                    }            // Move while staying in bounds
+                    const newX = Math.max(1, Math.min(tilesX - 2, cloudEnemy.x + moveX));
+                    const newY = Math.max(1, Math.min(tilesY - 2, cloudEnemy.y + moveY));
+                    cloudEnemy.x = newX;
+                    cloudEnemy.y = newY;
                 }
             }
               // Revise collision detection for all enemies
@@ -2100,9 +2149,7 @@
             if (devil && devil.x === player.x && devil.y === player.y) {
                 loseLife();
                 player = { ...initialPlayerPos }; // Respawn player
-            }
-
-            if (cloudEnemy && cloudEnemy.x === player.x && cloudEnemy.y === player.y) {
+            }            if (cloudEnemy && Math.abs(cloudEnemy.x - player.x) <= 0.5 && Math.abs(cloudEnemy.y - player.y) <= 0.5) {
                 loseLife();
                 player = { ...initialPlayerPos }; // Respawn player
             }
