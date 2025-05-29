@@ -462,9 +462,7 @@
                 source.connect(audioCtx.destination);
                 source.start(0);
             });
-        }
-
-        // Game parameters
+        }        // Game parameters
         let tileSize = 32;
         let tilesX = 11, tilesY = 11;
         let score = 0, level = 1;
@@ -472,6 +470,7 @@
         let paused = false;
         let lives = 3;
         const maxLives = 6;
+        let permanentFires = []; // New array for permanent fire obstacles
         let player = { x: 1, y: 1, dir: 'right' };
         let initialPlayerPos = { x: 1, y: 1, dir: 'right' };
         let maze = [];
@@ -1204,8 +1203,8 @@
                     }; 
                 }
                   // Level 80 enemy spawning is handled in the special levels section above
-            }            // Add cloud enemy initialization for level 51, 65, 66, 68, 69, and 80
-            if ([51, 53, 56, 59, 61, 63, 65, 66, 68, 69, 80].includes(level)) {
+            }            // Add cloud enemy initialization for specific levels and range 71-80
+            if ([51, 53, 56, 59, 61, 63, 65, 66, 68, 69, 80].includes(level) || (level >= 71 && level <= 80)) {
                 const availableCloudCells = accessibleCells.filter(([x, y]) => {
                     return x !== player.x || y !== player.y; // Not on player
                 });
