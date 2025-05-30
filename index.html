@@ -641,18 +641,32 @@
             if (level >= 5) tilesX++;
             if (level >= 15) tilesX++;
             if (level >= 25) tilesX++;
-            canvas.width = tilesX * tileSize;
-            canvas.height = tilesY * tileSize;
-            
+
+            // Shrink map by 1 row/col from all edges for levels 1-5
+            let shrinkEdges = (level >= 1 && level <= 5);
+            let shrinkAmount = shrinkEdges ? 2 : 0;
+            let actualTilesX = tilesX - shrinkAmount;
+            let actualTilesY = tilesY - shrinkAmount;
+
+            canvas.width = actualTilesX * tileSize;
+            canvas.height = actualTilesY * tileSize;
+
             // Update mobile controls position when canvas size changes
             updateMobileControlsPosition();
-            
-            let m = Array.from({length: tilesY}, (_, y) =>
-                Array.from({length: tilesX}, (_, x) =>
-                    (x === 0 || y === 0 || x === tilesX-1 || y === tilesY-1) ? 1 : 0
+
+            // Build maze array with or without shrink
+            let m = Array.from({length: actualTilesY}, (_, y) =>
+                Array.from({length: actualTilesX}, (_, x) =>
+                    (x === 0 || y === 0 || x === actualTilesX-1 || y === actualTilesY-1) ? 1 : 0
                 )
             );
-              // Define the center of the map
+            // For levels 1-5, update tilesX/tilesY to match the shrunken maze
+            if (shrinkEdges) {
+                tilesX = actualTilesX;
+                tilesY = actualTilesY;
+            }
+
+            // Define the center of the map
             const centerX = Math.floor(tilesX / 2);
             const centerY = Math.floor(tilesY / 2);
               // Special handling for level 65 - now with 6 obstacles
@@ -910,8 +924,9 @@
                     prizes.push({x, y});
                 }
             }            // Bone collectible - appears on level 31 (guaranteed) and every 3 levels after that
+// Now also appears on levels 11, 12, 19, 22, 24, and 27
             bones = [];
-            if ((level === 31 || (level > 31 && level % 3 === 0)) && accessibleCells.length > 3) {
+            if (([11, 12, 19, 22, 24, 27].includes(level) || level === 31 || (level > 31 && level % 3 === 0)) && accessibleCells.length > 3) {
                 // Find accessible cells that don't have a coin, prize, or player
                 const availableCellsForBone = accessibleCells.filter(([x, y]) => 
                     !coins.some(c => c.x === x && c.y === y) &&
@@ -924,34 +939,7 @@
                     const [bx, by] = availableCellsForBone[Math.floor(Math.random() * availableCellsForBone.length)];
                     bones.push({ x: bx, y: by });
                 }
-            }            // Extra life spawning system:
-            // Levels 1-20: Exactly 1 life every 5 levels
-            // Levels >20: 1-2 lives every 5 levels
-            if (level % 5 === 0 && accessibleCells.length > 3) {
-                // Determine how many extra lives based on level
-                const numLives = level <= 20 ? 1 : Math.floor(Math.random() * 2) + 1;
-                
-                // Find accessible cells that don't have a coin, prize, bone, or player
-                const availableCells = accessibleCells.filter(([x, y]) => 
-                    (x !== player.x || y !== player.y) && 
-                    !coins.some(coin => coin.x === x && coin.y === y) &&
-                    !prizes.some(prize => prize.x === x && prize.y === y) &&
-                    !bones.some(bone => bone.x === x && bone.y === y)
-                );
-                
-                // Place lives if there are available cells
-                if (availableCells.length >= numLives) {
-                    // Shuffle the array to choose random positions
-                    for (let i = 0; i < numLives; i++) {
-                        const index = Math.floor(Math.random() * availableCells.length);
-                        const [x, y] = availableCells[index];
-                        lifeItems.push({x, y});
-                        availableCells.splice(index, 1); // Remove to avoid repetition
-                    }
-                }
-            }
-            
-            // Enemy generation - only from level 4 onwards
+            }            // Enemy generation - only from level 4 onwards
             enemy = null;
             ghost2 = null;
             devil = null;
@@ -1302,6 +1290,8 @@
             skulls = [];
             // Custom skull spawning schedule
             const skullSchedule = {
+                13: 1,
+                14: 1,
                 25: 1,
                 32: 1,
                 34: 3,
@@ -1666,6 +1656,7 @@ function triggerPlayerHurt() {
                     ctx.restore();
                 }
                 
+                               
                 // Draw second ghost (if it exists)
                 if (ghost2) {                
                     const scale = 1 + Math.sin(now / 750) * 0.05;
@@ -1750,7 +1741,6 @@ function triggerPlayerHurt() {
                 player.x = nx;
                 player.y = ny;
                 if (dir === 'left' || dir === 'right') {
-
                     player.lastDir = dir;
                 }
                 player.dir = dir;
@@ -1815,11 +1805,16 @@ function triggerPlayerHurt() {
                         break;
                     }
                 }
-                  // Collect skull
+                // Collect skull
                 for (let i = 0; i < skulls.length; i++) {
                     if (skulls[i].x === player.x && skulls[i].y === player.y) {
-                        skulls.splice(i, 1);
-                        loseLife(); // Only lose a life, do not move player
+                        // Check for skull grace period
+                        if (!player.skullGraceUntil || player.skullGraceUntil < Date.now()) {
+                            skulls.splice(i, 1);
+                            loseLife(); // Only lose a life, do not move player
+                            // Set skull grace period (invulnerability)
+                            player.skullGraceUntil = Date.now() + 600;
+                        }
                         break;
                     }
                 }
@@ -2156,6 +2151,7 @@ function triggerPlayerHurt() {
             // Reset music when starting a new game
             GameMusic.stop();
             GameMusic.updateForLevel(level);
+            player.skullGraceUntil = 0;
             
             draw();
         }
@@ -2385,27 +2381,31 @@ function triggerPlayerHurt() {
                 }
             }
               // Revise collision detection for all enemies
+            let playerCollided = false;
             if (enemy && enemy.x === player.x && enemy.y === player.y) {
                 loseLife();
                 player = { ...initialPlayerPos }; // Respawn player
-            }            // Special collision check for ghost2 when it's a devil (levels 30, 40, 50)
+                playerCollided = true;
+            }
+            // Special collision check for ghost2 when it's a devil (levels 30, 40, 50)
             if (ghost2) {
                 // When it's a devil form, use scaled collision detection to match the visual
                 if (ghost2.isDevil) {
                     const now = Date.now();
                     const scale = 1 + Math.sin(now / 750) * 0.05; // Match the visual scaling
                     const collisionRadius = scale * 0.4; // Slightly smaller than visual for fairness
-                    
                     if (Math.abs(ghost2.x - player.x) <= collisionRadius && 
                         Math.abs(ghost2.y - player.y) <= collisionRadius) {
                         loseLife();
                         player = { ...initialPlayerPos }; // Respawn player
+                        playerCollided = true;
                     }
                 } else {
                     // Regular ghost2 uses point collision
                     if (ghost2.x === player.x && ghost2.y === player.y) {
                         loseLife();
                         player = { ...initialPlayerPos }; // Respawn player
+                        playerCollided = true;
                     }
                 }
             }
