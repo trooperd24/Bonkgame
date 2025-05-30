@@ -1834,7 +1834,15 @@ function triggerPlayerHurt() {
                     }
                     maze = generateMazeAI(level);
                     document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
-                    
+                    // Reset lifeItems and spawn according to new rules
+                    lifeItems = [];
+                    if (level >= 5 && (level - 5) % 3 === 0) {
+                        spawnLifeItem();
+                        // Chance for second life based on level
+                        if (level >= 25 && Math.random() < getSecondLifeProbability(level)) {
+                            spawnLifeItem();
+                        }
+                    }
                     // Update music and play level transition sound
                     GameMusic.updateForLevel(level);
                     
@@ -1913,7 +1921,15 @@ function triggerPlayerHurt() {
                 }
                 maze = generateMazeAI(level);
                 document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
-                
+                // Reset lifeItems and spawn according to new rules
+                lifeItems = [];
+                if (level >= 5 && (level - 5) % 3 === 0) {
+                    spawnLifeItem();
+                    // Chance for second life based on level
+                    if (level >= 25 && Math.random() < getSecondLifeProbability(level)) {
+                        spawnLifeItem();
+                    }
+                }
                 // Update music for new level
                 GameMusic.updateForLevel(level);
                 draw();
@@ -2138,6 +2154,45 @@ function triggerPlayerHurt() {
             }
         }
         
+        // Helper function to get second life probability based on level
+function getSecondLifeProbability(level) {
+    if (level >= 65) return 0.7;    // 70% chance after level 65
+    if (level >= 55) return 0.6;    // 60% chance after level 55
+    if (level >= 45) return 0.5;    // 50% chance after level 45
+    if (level >= 35) return 0.4;    // 40% chance after level 35
+    if (level >= 25) return 0.3;    // 30% chance after level 25
+    return 0;                       // No second life before level 25
+}
+
+// Utility to get a random empty cell
+function getRandomEmptyCell() {
+    let emptyCells = [];
+    for (let y = 0; y < tilesY; y++) {
+        for (let x = 0; x < tilesX; x++) {
+            // Check if cell is empty and not occupied by player or other items
+            if (maze[y][x] === 0 &&
+                !(player.x === x && player.y === y) &&
+                !coins.some(c => c.x === x && c.y === y) &&
+                !bones.some(b => b.x === x && b.y === y) &&
+                !prizes.some(p => p.x === x && p.y === y) &&
+                !skulls.some(s => s.x === x && s.y === y) &&
+                !lifeItems.some(l => l.x === x && l.y === y)) {
+                emptyCells.push({x, y});
+            }
+        }
+    }
+    if (emptyCells.length === 0) return null;
+    return emptyCells[Math.floor(Math.random() * emptyCells.length)];
+}
+
+// Function to spawn a life item at a random empty cell
+function spawnLifeItem() {
+    const cell = getRandomEmptyCell();
+    if (cell) {
+        lifeItems.push({ x: cell.x, y: cell.y });
+    }
+}
+
         window.playAgain = function() {
             won = false;
             score = 0;
@@ -2147,12 +2202,11 @@ function triggerPlayerHurt() {
             document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
             document.getElementById('winMenu').style.display = 'none';
             updateLivesDisplay();
-            
-            // Reset music when starting a new game
+            lifeItems = [];
+            // No life spawn at level 1
             GameMusic.stop();
             GameMusic.updateForLevel(level);
             player.skullGraceUntil = 0;
-            
             draw();
         }
 
