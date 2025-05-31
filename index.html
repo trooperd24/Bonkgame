@@ -1441,6 +1441,8 @@
         // --- Player Hurt State ---
 let playerHurt = false;
 let playerHurtTimeout = null;
+// Input tracking for movement and obstacle safety checks
+let inputQueue = [];
 
 function triggerPlayerHurt() {
     playerHurt = true;
@@ -1465,8 +1467,16 @@ function triggerPlayerHurt() {
                     // Update the maze array for regular dynamic obstacles
                     for (const obs of dynamicObstaclesList) {
                         if (maze[obs.y] && maze[obs.y][obs.x] !== undefined) {
-                            if (dynamicObstaclesVisible && player.x === obs.x && player.y === obs.y) {
-                                // Don't turn it into a wall if player is there
+                            // Check both current player position and their next intended position
+                            const isPlayerCurrentlyHere = player.x === obs.x && player.y === obs.y;
+                            const isPlayerMovingHere = 
+                                (inputQueue.includes('ArrowRight') && player.x + 1 === obs.x && player.y === obs.y) ||
+                                (inputQueue.includes('ArrowLeft') && player.x - 1 === obs.x && player.y === obs.y) ||
+                                (inputQueue.includes('ArrowUp') && player.x === obs.x && player.y - 1 === obs.y) ||
+                                (inputQueue.includes('ArrowDown') && player.x === obs.x && player.y + 1 === obs.y);
+
+                            if (dynamicObstaclesVisible && (isPlayerCurrentlyHere || isPlayerMovingHere)) {
+                                // Don't turn it into a wall if player is there or moving there
                             } else {
                                 maze[obs.y][obs.x] = dynamicObstaclesVisible ? 1 : 0;
                             }
@@ -1877,6 +1887,10 @@ function triggerPlayerHurt() {
             // Prevent scrolling with arrow keys
             if (e.key.startsWith('Arrow')) {
                 e.preventDefault();
+                // Add to input queue for dynamic obstacles safety check
+                if (!inputQueue.includes(e.key)) {
+                    inputQueue.push(e.key);
+                }
             }
             
             if (won) {
@@ -1958,7 +1972,12 @@ function triggerPlayerHurt() {
                 moveDir = null;
                 if (moveInterval) clearInterval(moveInterval);
             }
-        });          document.addEventListener('mousedown', (e) => {
+            
+            // Remove from input queue when key is released
+            if (e.key.startsWith('Arrow')) {
+                inputQueue = inputQueue.filter(key => key !== e.key);
+            }
+        });document.addEventListener('mousedown', (e) => {
             // Only unpause if not clicking on the pause toggle button
             if (paused && !e.target.closest('#pauseToggle')) {
                 togglePause(false);
@@ -1973,15 +1992,28 @@ function triggerPlayerHurt() {
             
             // Update control positions based on canvas size
             updateMobileControlsPosition();
-            
-            // Helper function to handle button events
+              // Helper function to handle button events
             function handleDirectionButton(element, direction) {
+                // Map direction to Arrow key for input queue
+                const dirToArrow = {
+                    'up': 'ArrowUp',
+                    'down': 'ArrowDown',
+                    'left': 'ArrowLeft',
+                    'right': 'ArrowRight'
+                };
+                
                 // Touch start / mouse down - start moving
                 const startHandler = (e) => {
                     e.preventDefault(); // Prevent scrolling on touch devices
                     if (won || paused) return;
                     
                     moveDir = direction;
+                    // Add to input queue for dynamic obstacles safety check
+                    const arrowKey = dirToArrow[direction];
+                    if (arrowKey && !inputQueue.includes(arrowKey)) {
+                        inputQueue.push(arrowKey);
+                    }
+                    
                     movePlayer(direction);
                     if (moveInterval) clearInterval(moveInterval);
                     moveInterval = setInterval(() => movePlayer(direction), 100);
@@ -1992,6 +2024,12 @@ function triggerPlayerHurt() {
                     if (moveDir === direction) {
                         moveDir = null;
                         if (moveInterval) clearInterval(moveInterval);
+                        
+                        // Remove from input queue
+                        const arrowKey = dirToArrow[direction];
+                        if (arrowKey) {
+                            inputQueue = inputQueue.filter(key => key !== arrowKey);
+                        }
                     }
                 };
                 
@@ -2528,12 +2566,12 @@ function spawnLifeItem() {
                 y: y,
                 lastMoveTime: Date.now(),
                 isFighting: false,
-                fightStartTime: null
+                fightStartTime: null,
+                stuckCounter: 0,
+                lastSuccessfulDir: null
             };
-        }
-
-        function moveFriendlyDog() {
-            if (!friendlyDog || !enemy) return;
+        }        function moveFriendlyDog() {
+            if (!friendlyDog || (!enemy && !ghost2)) return;
 
             // If fighting, just return since draw function handles the animation removal
             if (friendlyDog.isFighting) {
@@ -2544,35 +2582,102 @@ function spawnLifeItem() {
             const currentTime = Date.now();
             if (currentTime - friendlyDog.lastMoveTime < 700) return;
 
-            // Calculate direction to enemy
-            const dx = enemy.x - friendlyDog.x;
-            const dy = enemy.y - friendlyDog.y;
+            // Determine which enemy to chase based on proximity
+            let targetEnemy = enemy;
+            let dx = 0, dy = 0;
 
-            // If no direct path, try to move closer using simple movement
-            // Try horizontal movement first
-            if (dx !== 0) {
-                const newX = friendlyDog.x + Math.sign(dx);
-                if (maze[friendlyDog.y] && maze[friendlyDog.y][newX] === 0) {
-                    friendlyDog.x = newX;
-                } else if (dy !== 0) {
-                    // If blocked horizontally, try vertical
-                    const newY = friendlyDog.y + Math.sign(dy);
-                    if (maze[newY] && maze[newY][ friendlyDog.x] === 0) {
-                        friendlyDog.y = newY;
-                    }
-                }
-            } else if (dy !== 0) {
-                const newY = friendlyDog.y + Math.sign(dy);
-                if (maze[newY] && maze[newY][friendlyDog.x] === 0) {
-                    friendlyDog.y = newY;
+            if (ghost2) {
+                const dist1 = enemy ? Math.abs(enemy.x - friendlyDog.x) + Math.abs(enemy.y - friendlyDog.y) : Infinity;
+                const dist2 = Math.abs(ghost2.x - friendlyDog.x) + Math.abs(ghost2.y - friendlyDog.y);
+                
+                // If ghost2 is closer or there's no enemy1, target ghost2
+                if (dist2 < dist1) {
+                    targetEnemy = ghost2;
                 }
             }
 
-            friendlyDog.lastMoveTime = currentTime;
+            // Calculate direction to chosen target
+            dx = targetEnemy.x - friendlyDog.x;
+            dy = targetEnemy.y - friendlyDog.y;
 
-            // Check for collision with enemy
-            if (friendlyDog.x === enemy.x && friendlyDog.y === enemy.y) {
-                enemy = null; // Remove ghost immediately
+            let moved = false;
+
+            // If stuck for too long, try alternative paths
+            if (friendlyDog.stuckCounter >= 3) {
+                // Define possible movement directions in order of preference
+                const directions = [
+                    // Cardinal directions
+                    {x: 1, y: 0}, {x: 0, y: 1}, {x: -1, y: 0}, {x: 0, y: -1},
+                    // Diagonal directions
+                    {x: 1, y: 1}, {x: 1, y: -1}, {x: -1, y: 1}, {x: -1, y: -1}
+                ];
+
+                // Try each direction until one works
+                for (const dir of directions) {
+                    // Skip the last direction that got us stuck
+                    if (friendlyDog.lastSuccessfulDir && 
+                        dir.x === -friendlyDog.lastSuccessfulDir.x && 
+                        dir.y === -friendlyDog.lastSuccessfulDir.y) {
+                        continue;
+                    }
+                    
+                    const newX = friendlyDog.x + dir.x;
+                    const newY = friendlyDog.y + dir.y;
+                    
+                    if (maze[newY] && maze[newY][newX] === 0) {
+                        friendlyDog.x = newX;
+                        friendlyDog.y = newY;
+                        friendlyDog.lastSuccessfulDir = dir;
+                        moved = true;
+                        friendlyDog.stuckCounter = 0;
+                        break;
+                    }
+                }
+            } else {
+                // Normal movement logic - try direct path first
+                if (dx !== 0) {
+                    const newX = friendlyDog.x + Math.sign(dx);
+                    if (maze[friendlyDog.y] && maze[friendlyDog.y][newX] === 0) {
+                        friendlyDog.x = newX;
+                        friendlyDog.lastSuccessfulDir = {x: Math.sign(dx), y: 0};
+                        moved = true;
+                    } else if (dy !== 0) {
+                        // If blocked horizontally, try vertical
+                        const newY = friendlyDog.y + Math.sign(dy);
+                        if (maze[newY] && maze[newY][friendlyDog.x] === 0) {
+                            friendlyDog.y = newY;
+                            friendlyDog.lastSuccessfulDir = {x: 0, y: Math.sign(dy)};
+                            moved = true;
+                        }
+                    }
+                } else if (dy !== 0) {
+                    const newY = friendlyDog.y + Math.sign(dy);
+                    if (maze[newY] && maze[newY][friendlyDog.x] === 0) {
+                        friendlyDog.y = newY;
+                        friendlyDog.lastSuccessfulDir = {x: 0, y: Math.sign(dy)};
+                        moved = true;
+                    }
+                }
+            }
+
+            // Update stuck counter based on movement success
+            if (!moved) {
+                friendlyDog.stuckCounter++;
+            } else {
+                friendlyDog.stuckCounter = 0;
+            }
+
+            friendlyDog.lastMoveTime = currentTime;            // Check for collision with enemies
+            if ((enemy && friendlyDog.x === enemy.x && friendlyDog.y === enemy.y) ||
+                (ghost2 && friendlyDog.x === ghost2.x && friendlyDog.y === ghost2.y)) {
+                
+                // Determine which ghost to remove
+                if (ghost2 && friendlyDog.x === ghost2.x && friendlyDog.y === ghost2.y) {
+                    ghost2 = null;
+                } else {
+                    enemy = null;
+                }
+                
                 friendlyDog.isFighting = true;
                 friendlyDog.fightStartTime = currentTime;
             }
