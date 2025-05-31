@@ -1,0 +1,2787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Bonk: the Game</title>
+    <script>
+        // Game Music System
+        const GameMusic = {
+            currentMusic: null,
+            currentTrack: null,
+            enabled: true,
+            isInitialized: false,
+
+            updateForLevel(level) {
+                if (!this.enabled) return;
+
+                let trackPath;
+                let rangeStart = 1;
+                let rangeSize = 0;
+                  // Determine which track to play based on level
+                if (level === 80) {
+                    trackPath = './sound/music-90-100-purgatory.mp3';
+                    rangeStart = 80;
+                    rangeSize = 1;
+                } else if (level <= 19) {
+                    trackPath = './sound/music-1-19-hiphop.mp3';
+                    rangeStart = 1;
+                    rangeSize = 19;
+                } else if (level <= 39) {
+                    trackPath = './sound/music-20-39-alien.mp3';
+                    rangeStart = 20;
+                    rangeSize = 20;                } else if (level <= 69) {
+                    trackPath = './sound/music-40-69-realm.mp3';
+                    rangeStart = 40;
+                    rangeSize = 30;
+                } else if (level <= 79) {
+                    trackPath = './sound/music-70-89-Hangover.mp3';
+                    rangeStart = 70;
+                    rangeSize = 10;
+                } else if (level === 80) {
+                    trackPath = './sound/music-90-100-purgatory.mp3';
+                    rangeStart = 80;
+                    rangeSize = 1;
+                }
+                
+                // Calculate playback speed based on position in range
+                const positionInRange = level - rangeStart;
+                const minSpeed = 0.95; // Slightly slower than normal at start
+                const maxSpeed = level > 89 ? 1.5 : 1.4; // Higher speed for last levels
+                const speedFactor = minSpeed + (positionInRange / rangeSize) * (maxSpeed - minSpeed);
+                
+                console.log(`Level ${level}: Playing ${trackPath} at speed ${speedFactor.toFixed(2)}x`);
+                
+                // Change track if necessary
+                if (trackPath !== this.currentTrack) {
+                    this.stop();
+                    this.currentTrack = trackPath;                    
+                    this.currentMusic = new Audio(trackPath);
+                    this.currentMusic.loop = true;
+                    this.currentMusic.volume = 0.7; // Set default volume to 70%
+                    
+                    if (this.isInitialized && !window.paused && !window.won) {
+                        this.play();
+                    }
+                } else if (this.currentMusic) {
+                    // Just update the speed if track is the same
+                    this.currentMusic.playbackRate = Math.min(speedFactor, 1.5);
+                    return;
+                }
+                
+                // Apply speed factor to current music
+                if (this.currentMusic) {
+                    this.currentMusic.playbackRate = Math.min(speedFactor, 1.5); // Limit to 1.5x for audio quality
+                }
+            },
+
+            play() {
+                if (this.enabled && this.currentMusic) {
+                    this.currentMusic.play().catch(e => {
+                        console.log('Music play error:', e);
+                        // Flag that we need user interaction
+                        this.isInitialized = false;
+                    });
+                }
+            },
+
+            stop() {
+                if (this.currentMusic) {
+                    this.currentMusic.pause();
+                    this.currentMusic.currentTime = 0;
+                    this.currentMusic = null;
+                }
+                this.currentTrack = null;
+            },
+
+            toggle(shouldPlay) {
+                if (shouldPlay) {
+                    this.play();
+                } else if (this.currentMusic) {
+                    this.currentMusic.pause();
+                }
+            },
+            
+            playEffect(soundPath) {
+                if (this.enabled) {
+                    const effect = new Audio(soundPath);
+                    effect.volume = 0.5; // Set effects volume to 50%
+                    effect.play().catch(e => console.log('Sound effect error:', e));
+                }
+            }
+        };
+          // Initialize music system after DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            GameMusic.enabled = true;            // Add event listener for pause toggle button
+            const pauseToggle = document.getElementById('pauseToggle');
+            pauseToggle.addEventListener('click', () => {
+                // Force opposite of current state to ensure proper toggling
+                // This makes sure the button always correctly toggles the pause state
+                togglePause(paused ? false : true);
+            });
+            
+            // We'll actually wait for user interaction before initializing
+            // This happens in the startMusicOnInteraction function
+        });
+
+        // Make music functions globally available
+        window.updateMusicForLevel = (level) => GameMusic.updateForLevel(level);
+        window.toggleMusic = (shouldPlay) => GameMusic.toggle(shouldPlay);
+        window.stopMusic = () => GameMusic.stop();
+        window.playSound = (path) => GameMusic.playEffect(path);
+        
+        // Add interaction handlers for first user input to start music
+        const startMusicOnInteraction = () => {
+            if (!GameMusic.isInitialized && GameMusic.enabled && !window.paused && !window.won) {
+                GameMusic.isInitialized = true;
+                GameMusic.updateForLevel(level);
+                GameMusic.play();
+                console.log("Music initialized after user interaction");
+            }
+        };
+
+        // Listen for either click or keypress to initialize audio
+        document.addEventListener('click', startMusicOnInteraction);
+        document.addEventListener('keydown', startMusicOnInteraction);
+    </script>    <style>
+        html, body {
+            background: #222;
+            color: #fff;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden; /* Prevent scrolling on mobile */
+            touch-action: none; /* Disable browser handling of touch gestures */
+        }
+        canvas { background: #111; display: block; margin: 10px auto; border: 2px solid #fff; }
+        #score { font-size: 1.5em; margin: 10px; }
+        #scoreText { vertical-align: middle; }
+        #lives img { width:28px; vertical-align:middle; margin-left:2px; }
+        h1 {
+            color: #FFD600;
+            font-size: 3em;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+        }
+        /* Mobile controls */        .game-container {
+            position: relative;
+            display: inline-block;
+            margin: 0 auto;
+            overflow: visible;
+        }.mobile-controls {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            pointer-events: none; /* Allow clicks to pass through to the canvas */
+        }        .direction-btn {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background-color: rgba(255, 214, 0, 0.14); /* 0.2 * 0.7 = 0.14 for 30% more transparent */
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            pointer-events: auto; /* Make buttons clickable */
+            z-index: 5;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+            transition: background-color 0.15s, transform 0.15s;
+        }
+        .direction-btn:active {
+            background-color: rgba(255, 214, 0, 0.1575); /* 0.225 * 0.7 = 0.1575 */
+            transform: scale(0.95);
+        }
+        .direction-btn img {
+            width: 30px;
+            height: 30px;
+            display: block; /* Prevents extra spacing */
+            transition: transform 0.2s;
+            opacity: 0.5; /* Restore to original value */
+        }#btn-right {
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        #btn-right img {
+            transform: rotate(0deg);
+        }
+        #btn-left {
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        #btn-left img {
+            transform: rotate(180deg);
+        }        #btn-up {
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        #btn-up img {
+            transform: rotate(270deg);
+        }
+        #btn-down {
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        #btn-down img {
+            transform: rotate(90deg);
+        }
+        
+        /* Mobile optimization */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2em;
+                margin-top: 10px;
+                margin-bottom: 5px;
+            }
+            
+            #score {
+                font-size: 1.2em;
+                margin: 5px;
+            }            
+            .direction-btn {
+                background-color: rgba(255, 214, 0, 0.14); /* 0.2 * 0.7 = 0.14 */
+            }
+              #musicToggle, #pauseToggle {
+                top: 5px;
+                padding: 5px 8px;
+                font-size: 12px;
+            }
+            
+            #musicToggle {
+                right: 5px;
+            }
+            
+            #pauseToggle {
+                right: 90px; /* Adjust position for mobile */
+            }
+            
+            #musicToggle img, #pauseToggle img {
+                width: 20px;
+                height: 20px;
+            }
+        }        #pausedMsg {
+            display: none;
+            position: fixed;
+            left: 50%; top: 50%;
+            transform: translate(-50%, -50%);
+            background: #FFD600;
+            color: #222;
+            padding: 18px 40px;
+            border-radius: 12px;
+            font-size: 1.5em;
+            z-index: 20;
+            box-shadow: 0 4px 24px #000a;
+            text-align: center;
+        }
+        #pausedMsg h2 {
+            margin: 0 0 15px 0;
+            font-size: 1.8em;
+        }
+        #pausedMsg h3 {
+            margin: 5px 0;
+            font-size: 1.2em;
+        }
+        #pausedMsg .controls-info {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+            margin: 10px 0;
+            text-align: left;
+        }
+        #pausedMsg ul {
+            padding-left: 20px;
+            margin: 5px 0;
+            font-size: 0.8em;
+        }
+        #winMenu {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(34,34,34,0.95);
+            color: #FFD600;
+            z-index: 10;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            font-size: 2em;
+        }
+        #winMenu button {
+            margin-top: 30px;
+            font-size: 1em;
+            padding: 10px 30px;
+            background: #FFD600;
+            color: #222;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        #winMenu button:hover {
+            background: #fff200;
+        }
+        #maxLivesMsg {
+            height: 24px;
+            line-height: 24px;
+            margin: 8px auto;
+            color: #FFD600;
+            visibility: hidden;
+        }
+        @keyframes rotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .life-item {
+            position: absolute;
+            animation: rotate 3s infinite linear;
+        }
+        .ghost2 {
+            filter: hue-rotate(120deg) brightness(1.2);
+            animation: pulse 1.5s infinite alternate;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.7; transform: scale(0.95); }
+            100% { opacity: 1.0; transform: scale(1.05); }
+        }
+        #credits {
+            display: flex;
+            justify-content: space-between;
+            max-width: 480px;
+            margin: 5px auto;
+            opacity: 0.6;
+            font-size: 0.9em;
+        }
+        #leftCredit a {
+            color: #FFD600;
+            text-decoration: none;
+        }
+        #leftCredit a:hover {
+            text-decoration: underline;
+        }
+        #rightCredit {
+            color: #FFD600;
+        }
+        #musicToggle, #pauseToggle {
+            position: absolute;
+            top: 10px;
+            background: #FFD600;
+            color: #222;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+        #musicToggle {
+            right: 10px;
+        }
+        #pauseToggle {
+            right: 120px; /* Position to the left of music toggle */
+        }
+        #musicToggle:hover, #pauseToggle:hover {
+            background: #fff200;
+        }
+        #musicToggle.off {
+            opacity: 0.7;
+            filter: grayscale(1);
+        }        #pauseToggle.paused {
+            background: #ff9900; /* Different color when paused */
+        }
+        #pauseToggle.paused img {
+            transform: rotate(225deg); /* Rotate arrow to point downward when paused */
+        }
+        #musicToggle img, #pauseToggle img {
+            width: 24px;
+            height: 24px;
+            vertical-align: middle;
+        }        #pauseToggle img {
+            transform: rotate(90deg); /* Rotate arrow upward to indicate pause */
+            transition: transform 0.3s ease; /* Add smooth transition for rotation */
+        }
+    </style>
+</head>
+<body>
+    <h1>Bonk: the Game</h1>    <div id="musicToggle">
+        <img src="./assets/speaker.png" alt="speaker" width="24" height="24">
+        <span>Music: On</span>
+    </div>    <div id="pauseToggle">
+        <img src="./assets/arrow.png" alt="pause" width="24" height="24">
+        <span>Pause</span>
+    </div>
+    <div id="score">
+        <span id="scoreText">Score: 0 | Level: 1</span>
+        <span id="lives"></span>
+    </div>    <div id="maxLivesMsg">Reached Max lives. Turned into points, well done!</div>    <div class="game-container">
+        <canvas id="gameCanvas" width="480" height="480"></canvas>
+        <div class="mobile-controls">
+            <div class="direction-btn" id="btn-up">
+                <img src="./assets/arrow.png" alt="Up">
+            </div>
+            <div class="direction-btn" id="btn-right">
+                <img src="./assets/arrow.png" alt="Right">
+            </div>
+            <div class="direction-btn" id="btn-down">
+                <img src="./assets/arrow.png" alt="Down">
+            </div>
+            <div class="direction-btn" id="btn-left">
+                <img src="./assets/arrow.png" alt="Left">
+            </div>
+        </div>
+    </div>
+    <div id="credits">
+        <div id="leftCredit"><a href="https://bonkscoin.io/" target="_blank">BonkCoin</a></div>
+        <div id="rightCredit">By TrooperD</div>
+    </div>
+    <div id="winMenu">
+        <div id="winText"></div>
+        <button onclick="playAgain()">Play again</button>
+    </div>
+    <div id="pausedMsg">
+        <h2>Paused</h2>
+        <div class="controls-info">
+            <h3>Controls</h3>
+            <ul>
+                <li>Movement: Arrow keys or WASD</li>
+                <li>Pause/Resume: P, Space, Enter, or Click</li>
+                <li>Toggle Music: M</li>
+            </ul>
+        </div>
+        <div style="font-size:0.7em; margin-top: 10px;">Press Space, Enter or Click to resume</div>
+    </div>
+    <script>
+        // Initialize canvas FIRST!
+        const canvas = document.getElementById('gameCanvas');
+        
+        // Add click handler for music toggle button
+        const musicToggle = document.getElementById('musicToggle');
+        musicToggle.addEventListener('click', () => {
+            GameMusic.enabled = !GameMusic.enabled;
+            musicToggle.classList.toggle('off', !GameMusic.enabled);
+            musicToggle.querySelector('span').textContent = `Music: ${GameMusic.enabled ? 'On' : 'Off'}`;
+            
+            if (GameMusic.enabled) {
+                if (!window.paused && !window.won) {
+                    GameMusic.updateForLevel(level);
+                }
+            } else {
+                GameMusic.stop();
+            }
+        });
+        
+        // Load assets
+        const boncImg = new Image();
+        boncImg.src = './assets/bonc.png';
+        const bonchurtImg = new Image();
+        bonchurtImg.src = './assets/bonchurt.png'; // Hurt sprite
+        const coinImg = new Image();
+        coinImg.src = './assets/coin.png';
+        const ghostImg = new Image();
+        ghostImg.src = './assets/ghost.png';
+        const lifeImg = new Image();
+        lifeImg.src = './assets/life.png';
+        const prizeImg = new Image();
+        prizeImg.src = './assets/prize.png';
+        const devilImg = new Image();
+        devilImg.src = './assets/devil.png';
+        const backgroundImg = new Image();
+        backgroundImg.src = './assets/background.jpg';
+        const boneImg = new Image();
+        boneImg.src = './assets/bone.webp';
+        const angryDogImg = new Image();
+        angryDogImg.src = './assets/angry.png';
+        const fightImg = new Image();
+        fightImg.src = './assets/fight.png'; // Load the fight animation sprite
+        const skullImg = new Image();
+        skullImg.src = './assets/skull.png';
+
+        // --- Audio Context and Effects for Prize Sound ---
+        let audioCtx = null;
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+            console.warn("Web Audio API is not supported in this browser.");
+        }
+
+        function playPrizePickupSound() {
+            if (!GameMusic.enabled || !audioCtx) return;
+            // Load the dedicated prize sound effect
+            GameMusic.loadSound('./sound/prize.mp3', (buffer) => {
+                const source = audioCtx.createBufferSource();
+                source.buffer = buffer;
+                
+                // No need for detune/pitch shift as we are using a dedicated sound file
+
+                source.connect(audioCtx.destination);
+                source.start(0);
+            });
+        }
+
+        // Game parameters
+        let tileSize = 32;
+        let tilesX = 11, tilesY = 11;
+        let score = 0, level = 1;
+        let won = false;
+        let paused = false;
+        let lives = 3;
+        const maxLives = 6;
+        let player = { x: 1, y: 1, dir: 'right' };
+        let initialPlayerPos = { x: 1, y: 1, dir: 'right' };        let maze = [];
+        let coins = [];
+        let lifeItems = [];
+        let prizes = [];
+        let bones = [];
+        let skulls = [];
+        let friendlyDog = null;
+        let enemy = null; // Initialize as null so no enemy appears until explicitly created
+        let ghost2 = null;
+        let devil = null;
+        let angryDog = null;
+        let giantGhost = null; // For the special level 36 ghost
+        let cloudEnemy = null; // New enemy for level 51
+
+        // Dynamic Obstacles Configuration
+        const DYNAMIC_OBSTACLE_INTERVAL = 2000; // Obstacles toggle every 2 seconds
+        let dynamicObstaclesList = [];
+        let fireObstaclesList = []; // New list for fire obstacles
+        let dynamicObstaclesVisible = true;
+        let fireObstaclesActive = true; // Track if fires are "on"
+        let lastObstacleToggleTime = 0;
+
+        // Load the fire image
+        const fireImg = new Image();
+        fireImg.src = './assets/fire.gif';
+
+        function updateLivesDisplay() {
+            const livesDiv = document.getElementById('lives');
+            livesDiv.innerHTML = '';
+            for (let i = 0; i < lives; i++) {
+                livesDiv.innerHTML += `<img src="./assets/bonc.png" alt="life">`;
+            }
+        }
+        
+        function showMaxLivesMsg() {
+            const msg = document.getElementById('maxLivesMsg');
+            msg.textContent = 'Reached Max lives. Turned into points, well done!';
+            msg.style.visibility = 'visible';
+            setTimeout(() => { msg.style.visibility = 'hidden'; }, 2500);
+        }
+        
+        // Loose obstacles from the beginning, no large blocks
+        function canPlaceObstacle(m, rx, ry) {
+            // Do not allow more than 2 obstacles together (in cross or block pattern)
+            let count = 0;
+            const dirs = [
+                [0, -1], [0, 1], [-1, 0], [1, 0]
+            ];
+            for (const [dx, dy] of dirs) {
+                if (m[ry + dy] && m[ry + dy][rx + dx] === 1) count++;
+            }
+            // Check corners to avoid 2x2 blocks
+            const corners = [
+                [[-1, 0], [0, -1], [-1, -1]],
+                [[1, 0], [0, -1], [1, -1]],
+                [[-1, 0], [0, 1], [-1, 1]],
+                [[1, 0], [0, 1], [1, 1]],
+            ];
+            for (const [[dx1, dy1], [dx2, dy2], [dx3, dy3]] of corners) {
+                if (
+                    m[ry + dy1] && m[ry + dy2] &&
+                    m[ry + dy3] !== undefined &&
+                    m[ry + dy1][rx + dx1] === 1 &&
+                    m[ry + dy2][rx + dx2] === 1 &&
+                    m[ry + dy3][rx + dx3] === 1
+                ) {
+                    return false;
+                }
+            }
+            return count <= 2;
+        }
+        
+        // Find a free cell near the center and not surrounded by obstacles
+        function findPlayerStart(maze) {
+            const centerX = Math.floor(maze[0].length / 2);
+            const centerY = Math.floor(maze.length / 2);
+            let minDist = Infinity;
+            let best = null;
+            for (let y = 1; y < maze.length - 1; y++) {
+                for (let x = 1; x < maze[0].length - 1; x++) {
+                    if (maze[y][x] === 0) {
+                        // Verify that it has at least one adjacent free cell
+                        let freeAdj = 0;
+                        for (const [dx, dy] of [[0,1],[1,0],[0,-1],[-1,0]]) {
+                            if (maze[y+dy][x+dx] === 0) freeAdj++;
+                        }
+                        if (freeAdj > 0) {
+                            let dist = Math.abs(x - centerX) + Math.abs(y - centerY);
+                            if (dist < minDist) {
+                                minDist = dist;
+                                best = { x, y };
+                            }
+                        }
+                    }
+                }
+            }
+            // If nothing is found, fallback to (1,1)
+            return best || { x: 1, y: 1 };
+        }
+          function generateMazeAI(level) {
+            let baseGrowth = Math.min(8, Math.floor((level-1)/10));
+            tilesX = 11 + baseGrowth;
+            tilesY = 11 + baseGrowth;
+            // Additional horizontal growth at levels 5, 15, 25
+            if (level >= 5) tilesX++;
+            if (level >= 15) tilesX++;
+            if (level >= 25) tilesX++;
+
+            // Shrink map by 1 row/col from all edges for levels 1-5
+            let shrinkEdges = (level >= 1 && level <= 5);
+            let shrinkAmount = shrinkEdges ? 2 : 0;
+            let actualTilesX = tilesX - shrinkAmount;
+            let actualTilesY = tilesY - shrinkAmount;
+
+            canvas.width = actualTilesX * tileSize;
+            canvas.height = actualTilesY * tileSize;
+
+            // Update mobile controls position when canvas size changes
+            updateMobileControlsPosition();
+
+            // Build maze array with or without shrink
+            let m = Array.from({length: actualTilesY}, (_, y) =>
+                Array.from({length: actualTilesX}, (_, x) =>
+                    (x === 0 || y === 0 || x === actualTilesX-1 || y === actualTilesY-1) ? 1 : 0
+                )
+            );
+            // For levels 1-5, update tilesX/tilesY to match the shrunken maze
+            if (shrinkEdges) {
+                tilesX = actualTilesX;
+                tilesY = actualTilesY;
+            }
+
+            // Define the center of the map
+            const centerX = Math.floor(tilesX / 2);
+            const centerY = Math.floor(tilesY / 2);
+              // Special handling for level 65 - now with 6 obstacles
+            if (level === 65) {
+                // Play special effect for cloud storm
+                GameMusic.playEffect('./sound/suspense.mp3');
+                
+                // Place exactly 6 obstacles for level 65
+                let placed = 0;
+                while (placed < 6) {
+                    let rx = Math.floor(Math.random() * (tilesX-2)) + 1;
+                    let ry = Math.floor(Math.random() * (tilesY-2)) + 1;
+                    if (m[ry][rx] === 0 && canPlaceObstacle(m, rx, ry)) {
+                        m[ry][rx] = 1;
+                        placed++;
+                    }
+                }
+            }
+            // Special handling for giant ghost levels
+            else if ([36, 45, 55].includes(level)) {
+                // Play evil laugh sound
+                GameMusic.playEffect('./sound/evillaugh.mp3');
+                
+                // 5 obstacles for these special levels
+                let placed = 0;
+                while (placed < 5) {
+                    let rx = Math.floor(Math.random() * (tilesX-2)) + 1;
+                    let ry = Math.floor(Math.random() * (tilesY-2)) + 1;
+                    if (m[ry][rx] === 0 && canPlaceObstacle(m, rx, ry)) {
+                        m[ry][rx] = 1;
+                        placed++;
+                    }
+                }
+            } else {
+                // Normal obstacle generation for other levels
+                let numObstacles;
+                  // Special obstacle counts for specific levels
+                if (level === 37) {
+                    numObstacles = 7;  // Level 37: 7 obstacles
+                } else if (level === 38) {
+                    numObstacles = 9;  // Level 38: 9 obstacles
+                } else if (level === 39) {
+                    numObstacles = 12; // Level 39: 12 obstacles
+                } else if (level === 48) {
+                    numObstacles = 10; // Level 48: 10 obstacles (special skull level)
+                } else {                // Default obstacle calculation for other levels
+                    numObstacles = Math.floor(level * 1.0) + 5;
+                }
+                let placed = 0;
+                let tries = 0;
+                while (placed < numObstacles && tries < numObstacles * 20) {
+                    let rx = Math.floor(Math.random() * (tilesX-2)) + 1;
+                    let ry = Math.floor(Math.random() * (tilesY-2)) + 1;
+                    
+                    // Calcular distancia al centro
+                    const distToCenter = Math.abs(rx - centerX) + Math.abs(ry - centerY);
+                    const mapSizeIncrease = Math.floor((level-1)/10);
+                    
+                    // Reducir probabilidad en el centro en 5% por cada incremento de tamaño del mapa
+                    if (level >= 10) {
+                        // If it's near the center and exceeds the probability check, we skip
+                        const centerThreshold = Math.max(tilesX, tilesY) * 0.2; // Defines "near the center"
+                        const reductionFactor = mapSizeIncrease * 0.05; // 5% less for each increment
+                        
+                        if (distToCenter < centerThreshold && Math.random() < reductionFactor) {
+                            tries++;
+                            continue; // Skip this obstacle placement
+                        }
+                    }
+                    
+                    if (
+                        m[ry][rx] === 0 &&
+                        canPlaceObstacle(m, rx, ry)
+                    ) {
+                        m[ry][rx] = 1;
+                        placed++;
+                    }
+                    tries++;
+                }
+            }
+
+            // Find the best place for the player
+            const playerStart = findPlayerStart(m);
+            player = { x: playerStart.x, y: playerStart.y, dir: 'right', lastDir: 'right' };
+            initialPlayerPos = { ...player };
+
+            // --- Dynamic Obstacles Initialization (Level 22+) ---
+            dynamicObstaclesList = [];
+            fireObstaclesList = [];
+            if (level >= 22) {
+                const obstacleCandidates = [];
+                for (let y = 1; y < tilesY - 1; y++) {
+                    for (let x = 1; x < tilesX - 1; x++) {
+                        // Must be a wall, not adjacent to player start, and not on border
+                        if (m[y][x] === 1 && 
+                            (Math.abs(x - player.x) > 1 || Math.abs(y - player.y) > 1) &&
+                            x > 0 && x < tilesX - 1 && y > 0 && y < tilesY - 1) {
+                            obstacleCandidates.push({x, y});
+                        }
+                    }
+                }                // Determine total obstacles based on level range
+                let totalObstacles;                if (level === 70) {
+                    // Special case for level 70: make 90% of obstacles dynamic
+                    totalObstacles = Math.min(Math.floor(obstacleCandidates.length * 0.99), 22); // Use 90% of available obstacles, max 12
+                } else if (level >= 90 && level <= 100) {
+                    totalObstacles = 8;
+                } else if (level >= 71 && level <= 89) {
+                    totalObstacles = 7;
+                } else if (level >= 56 && level <= 69) {
+                    totalObstacles = 6;
+                } else if (level >= 50 && level <= 55) {
+                    totalObstacles = 5;
+                } else if (level >= 47 && level <= 49) {
+                    totalObstacles = 4;
+                } else if (level >= 40 && level <= 45) {
+                    totalObstacles = 3;
+                } else {
+                    totalObstacles = Math.min(Math.floor(Math.random() * 3) + 1, obstacleCandidates.length); // Default behavior for other levels
+                }
+
+                totalObstacles = Math.min(totalObstacles, obstacleCandidates.length); // Make sure we don't exceed available candidates
+                const shuffledCandidates = [...obstacleCandidates].sort(() => Math.random() - 0.5);
+                
+                // Add fire obstacles (1-2 fires depending on level)
+                const numFireObstacles = Math.min(Math.floor(level / 30), 2); // More fires at higher levels
+                for (let i = 0; i < numFireObstacles && i < shuffledCandidates.length; i++) {
+                    fireObstaclesList.push(shuffledCandidates[i]);
+                    m[shuffledCandidates[i].y][shuffledCandidates[i].x] = 0; // Start as path
+                }
+                
+                // Add regular dynamic obstacles with remaining candidates
+                for (let i = numFireObstacles; i < totalObstacles && i < shuffledCandidates.length; i++) {
+                    dynamicObstaclesList.push(shuffledCandidates[i]);
+                    m[shuffledCandidates[i].y][shuffledCandidates[i].x] = 0; // Start as path
+                }
+            }
+
+            // Make all obstacles dynamic for levels 35 and 62
+            if (level === 35 || level === 62) {
+                dynamicObstaclesList = [];
+                for (let y = 1; y < tilesY - 1; y++) {
+                    for (let x = 1; x < tilesX - 1; x++) {
+                        if (m[y][x] === 1) {
+                            dynamicObstaclesList.push({x, y});
+                            m[y][x] = 0; // Start as path, will toggle in draw()
+                        }
+                    }
+                }
+                fireObstaclesList = [];
+            }
+
+            // --- BFS to find accessible cells ---
+            function getAccessibleCells(startX, startY) {
+                let visited = Array.from({length: tilesY}, () => Array(tilesX).fill(false));
+                let queue = [[startX, startY]];
+                visited[startY][startX] = true;
+                let accessible = [[startX, startY]];
+                while (queue.length) {
+                    let [x, y] = queue.shift();
+                    for (const [dx, dy] of [[0,1],[1,0],[0,-1],[-1,0]]) {
+                        let nx = x + dx, ny = y + dy;
+                        if (
+                            nx >= 0 && nx < tilesX &&
+                            ny >= 0 && ny < tilesY &&
+                            !visited[ny][nx] &&
+                            m[ny][nx] === 0
+                        ) {
+                            visited[ny][nx] = true;
+                            accessible.push([nx, ny]);
+                            queue.push([nx, ny]);
+                        }
+                    }
+                }
+                return accessible;
+            }
+            
+            // Only place objects in accessible cells
+            let accessibleCells = getAccessibleCells(player.x, player.y);
+            coins = [];
+            lifeItems = [];
+            prizes = [];
+            bones = [];
+            friendlyDog = null; // Reset friendly dog for new level
+            
+            // Filtered accessible cells (exclude player position)
+            const availableCoinCells = accessibleCells.filter(([x, y]) => 
+                (x !== player.x || y !== player.y)
+            );
+              
+            if (level <= 25) {
+                // For levels 1-12 and 13-25, use 1-12 coin pattern
+                // Calculate effective level (1-12) by using modulo
+                const effectiveLevel = ((level - 1) % 12) + 1;
+                const numCoins = Math.min(effectiveLevel, availableCoinCells.length);
+                
+                // Shuffle accessible cells to place coins randomly
+                const shuffledCells = [...availableCoinCells];
+                for (let i = shuffledCells.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [shuffledCells[i], shuffledCells[j]] = [shuffledCells[j], shuffledCells[i]];
+                }
+                
+                // Place exactly numCoins coins
+                for (let i = 0; i < numCoins; i++) {
+                    const [x, y] = shuffledCells[i];
+                    coins.push({x, y});
+                }
+            } else {
+                // For levels > 25, use the modified coin generation system
+                // Coin generation - with caps based on level
+                let coinProb = Math.min(0.05 + level * 0.005, 0.15);
+                
+                // Generate coins randomly
+                for (const [x, y] of availableCoinCells) {
+                    if (Math.random() < coinProb) {
+                        coins.push({x, y});
+                    }
+                }
+                
+                // Ensure at least one coin
+                if (coins.length === 0 && availableCoinCells.length > 0) {
+                    let [x, y] = availableCoinCells[availableCoinCells.length-1];
+                    coins.push({x, y});
+                }
+                
+                // Special case for level 100 - cap at 20 coins
+                if (level === 100) {
+                    if (coins.length > 20) { // Remains 20
+                        coins = coins
+                            .sort(() => Math.random() - 0.5)
+                            .slice(0, 20); // Remains 20
+                    }
+                } else {
+                    // For all other levels > 25 (and not 100), cap at 10 coins
+                    if (coins.length > 10) { // Changed from 15 to 10
+                        coins = coins
+                            .sort(() => Math.random() - 0.5)
+                            .slice(0, 10); // Changed from 15 to 10
+                    }
+                }
+            }
+            
+            // Prize - appears once every 3 levels starting from level 10
+            if (level >= 10 && level % 3 === 0 && accessibleCells.length > 3) {
+                // Find accessible cells that don't have a coin or player
+                const availableCellsForPrize = accessibleCells.filter(([x, y]) => 
+                    (x !== player.x || y !== player.y) && 
+                    !coins.some(coin => coin.x === x && coin.y === y)
+                );
+                
+                // Place a prize if there are available cells
+                if (availableCellsForPrize.length > 0) {
+                    const index = Math.floor(Math.random() * availableCellsForPrize.length);
+                    const [x, y] = availableCellsForPrize[index];
+                    prizes.push({x, y});
+                }
+            }            // Bone collectible - appears on level 31 (guaranteed) and every 3 levels after that
+// Now also appears on levels 11, 12, 19, 22, 24, and 27
+            bones = [];
+            if (([11, 12, 19, 22, 24, 27].includes(level) || level === 31 || (level > 31 && level % 3 === 0)) && accessibleCells.length > 3) {
+                // Find accessible cells that don't have a coin, prize, or player
+                const availableCellsForBone = accessibleCells.filter(([x, y]) => 
+                    !coins.some(c => c.x === x && c.y === y) &&
+                    !prizes.some(p => p.x === x && p.y === y) &&
+                    !(player.x === x && player.y === y)
+                );
+                
+                // Place a bone if there are available cells
+                if (availableCellsForBone.length > 0) {
+                    const [bx, by] = availableCellsForBone[Math.floor(Math.random() * availableCellsForBone.length)];
+                    bones.push({ x: bx, y: by });
+                }
+            }            // Enemy generation - only from level 4 onwards
+            enemy = null;
+            ghost2 = null;
+            devil = null;
+            giantGhost = null;
+            
+            // Ensure no enemies appear in levels 1-3
+            if (level < 4) {
+                enemy = null;
+                ghost2 = null;
+                devil = null;
+                giantGhost = null;
+                cloudEnemy = null;
+                skulls = []; // Ensure skulls is always empty for these levels
+                return m; // Exit enemy generation early for levels 1-3
+            }
+            
+            if ([36, 45, 55, 65].includes(level)) {
+                // Special levels with giant ghost configurations
+                // Play evil laugh sound for all giant ghost levels
+                GameMusic.playEffect('./sound/evillaugh.mp3');
+                
+                let availableGiantGhostCells = [];
+                for (let y = 1; y < tilesY - 2; y++) {
+                    for (let x = 1; x < tilesX - 2; x++) {
+                        // Check if 2x2 area is free
+                        if (m[y][x] === 0 && m[y][x+1] === 0 && 
+                            m[y+1][x] === 0 && m[y+1][x+1] === 0 &&
+                            // Not too close to player
+                            Math.abs(x - player.x) + Math.abs(y - player.y) > 6 &&
+                            // Not on any coins
+                            !coins.some(c => (c.x === x || c.x === x+1) && (c.y === y || c.y === y+1))) {
+                            availableGiantGhostCells.push({x, y});
+                        }
+                    }
+                }
+
+                if (availableGiantGhostCells.length > 0) {
+                    const spawnPos = availableGiantGhostCells[
+                        Math.floor(Math.random() * availableGiantGhostCells.length)
+                    ];                    
+                    giantGhost = {
+                        x: spawnPos.x,
+                        y: spawnPos.y,
+                        lastMoveTime: 0,
+                        moveDelay: 500 // Moves faster now (was 800ms)
+                    };
+                      // For level 45, also spawn 1 regular ghost
+                    if (level === 45 && accessibleCells.length > 3) {
+                        // Spawn one regular ghost
+                        const availableEnemyCells = accessibleCells.filter(([x, y]) => {
+                            if (x === player.x && y === player.y) return false; // Not on player
+                            if (x >= giantGhost.x && x <= giantGhost.x + 1 && 
+                                y >= giantGhost.y && y <= giantGhost.y + 1) return false; // Not on giant ghost
+                            if (coins.some(c => c.x === x && c.y === y)) return false; // Not on coins
+                            return Math.abs(x - player.x) + Math.abs(y - player.y) > 4; // Not too close
+                        });
+                        
+                        if (availableEnemyCells.length > 0) {
+                            const [ex, ey] = availableEnemyCells[Math.floor(Math.random() * availableEnemyCells.length)];
+                            enemy = { x: ex, y: ey };
+                        }
+                    }
+                    
+                    // For level 55, spawn giant ghost and regular ghost1 only
+                    if (level === 55 && accessibleCells.length > 3) {
+                        // Spawn one regular ghost
+                        const availableEnemyCells = accessibleCells.filter(([x, y]) => {
+                            if (x === player.x && y === player.y) return false; // Not on player
+                            if (x >= giantGhost.x && x <= giantGhost.x + 1 && 
+                                y >= giantGhost.y && y <= giantGhost.y + 1) return false; // Not on giant ghost
+                            if (coins.some(c => c.x === x && c.y === y)) return false; // Not on coins
+                            return Math.abs(x - player.x) + Math.abs(y - player.y) > 4; // Not too close
+                        });
+                        
+                        if (availableEnemyCells.length > 0) {
+                            const [ex, ey] = availableEnemyCells[Math.floor(Math.random() * availableEnemyCells.length)];
+                            enemy = { x: ex, y: ey };
+                        }
+                    }
+                    
+                    // For level 65, spawn giant ghost, ghost1, ghost2 and cloud enemy
+                    if (level === 65 && accessibleCells.length > 5) {
+                        const availableEnemyCells = accessibleCells.filter(([x, y]) => {
+                            if (x === player.x && y === player.y) return false; // Not on player
+                            if (x >= giantGhost.x && x <= giantGhost.x + 1 && 
+                                y >= giantGhost.y && y <= giantGhost.y + 1) return false; // Not on giant ghost
+                            if (coins.some(c => c.x === x && c.y === y)) return false; // Not on coins
+                            return Math.abs(x - player.x) + Math.abs(y - player.y) > 4; // Not too close
+                        });
+                        
+                        if (availableEnemyCells.length > 0) {
+                            // Spawn ghost1
+                            const [ex, ey] = availableEnemyCells[Math.floor(Math.random() * availableEnemyCells.length)];
+                            enemy = { x: ex, y: ey };
+                            
+                            // Spawn ghost2
+                            const availableGhost2Cells = availableEnemyCells.filter(([x, y]) => 
+                                x !== enemy.x || y !== enemy.y
+                            );
+                            
+                            if (availableGhost2Cells.length > 0) {
+                                const [gx, gy] = availableGhost2Cells[Math.floor(Math.random() * availableGhost2Cells.length)];
+                                ghost2 = { x: gx, y: gy };
+                            }
+                            
+                            // Spawn cloud enemy
+                            cloudEnemy = {
+                                x: player.x,
+                                y: Math.max(1, player.y - 4), // Start 4 tiles above player if possible
+                                lastMoveTime: 0,
+                                moveDelay: 1000 // Moves slowly
+                            };
+                        }
+                    }
+                }
+            } else if (level >= 4) {
+                // Normal enemy generation only for levels 4 and higher
+                let availableEnemyCells = accessibleCells.filter(([x, y]) => {
+                    if (x === player.x && y === player.y) return false; // Not on player
+                    if (coins.some(c => c.x === x && c.y === y)) return false; // Not on coins
+                    if (prizes.some(p => p.x === x && p.y === y)) return false; // Not on prizes
+
+                    // Apply minimum distance rules ONLY for levels >= 20 in this initial filter
+                    if (level >= 20) {
+                        if (level < 25) { // For levels 20-24
+                            if (Math.abs(x - player.x) + Math.abs(y - player.y) < 3) return false; // Min Manhattan distance 3
+                        } else { // For levels 25+
+                            if (Math.abs(y - player.y) < 4) return false; // At least 4 rows away
+                        }
+                    }
+                    return true;
+                });
+
+                if (availableEnemyCells.length > 0) {
+                    if (level < 20) { // Levels 4-19: find the farthest cell from availableEnemyCells
+                        let farthestCell = availableEnemyCells[0];
+                        let maxDist = Math.abs(farthestCell[0] - player.x) + Math.abs(farthestCell[1] - player.y);
+
+                        for (let i = 1; i < availableEnemyCells.length; i++) {
+                            const cell = availableEnemyCells[i];
+                            const dist = Math.abs(cell[0] - player.x) + Math.abs(cell[1] - player.y);
+                            if (dist > maxDist) {
+                                maxDist = dist;
+                                farthestCell = cell;
+                            }
+                        }
+                        enemy = { x: farthestCell[0], y: farthestCell[1] };
+                    } else { // Levels >= 20: pick a random cell from the filtered list
+                        let [ex, ey] = availableEnemyCells[Math.floor(Math.random() * availableEnemyCells.length)];
+                        enemy = { x: ex, y: ey };
+                    }
+                }
+
+                // Fallback: if enemy is still null (e.g., availableEnemyCells was empty)
+                if (!enemy) {
+                    let fallbackCells = [];
+                    for (let r = 1; r < tilesY - 1; r++) {
+                        for (let c = 1; c < tilesX - 1; c++) {
+                            if (m[r][c] === 0 && (c !== player.x || r !== player.y)) { // Not a wall, not on player
+                                if (coins.some(coin => coin.x === c && coin.y === r)) continue; // Not on coins
+                                if (prizes.some(prize => prize.x === c && prize.y === r)) continue; // Not on prizes
+
+                                // Apply minimum distance rules ONLY for levels >= 20 for fallback candidates
+                                if (level >= 20) {
+                                    if (level < 25) { // Levels 20-24
+                                        if (Math.abs(c - player.x) + Math.abs(r - player.y) < 3) continue;
+                                    } else { // Levels 25+
+                                        if (Math.abs(r - player.y) < 4) continue;
+                                    }
+                                }
+                                fallbackCells.push([c, r]);
+                            }
+                        }
+                    }
+
+                    if (fallbackCells.length > 0) {
+                        if (level < 20) { // Levels 4-19: find the farthest cell from fallbackCells
+                            let farthestFallbackCell = fallbackCells[0];
+                            let maxDist = Math.abs(farthestFallbackCell[0] - player.x) + Math.abs(farthestFallbackCell[1] - player.y);
+                            for (let i = 1; i < fallbackCells.length; i++) {
+                                const cell = fallbackCells[i];
+                                const dist = Math.abs(cell[0] - player.x) + Math.abs(cell[1] - player.y);
+                                if (dist > maxDist) {
+                                    maxDist = dist;
+                                    farthestFallbackCell = cell;
+                                }
+                            }
+                            enemy = { x: farthestFallbackCell[0], y: farthestFallbackCell[1] };
+                        } else { // Levels >= 20: pick a random cell from the filtered fallback list
+                            let [ex, ey] = fallbackCells[Math.floor(Math.random() * fallbackCells.length)];
+                            enemy = { x: ex, y: ey };
+                        }
+                    } else {
+                        // Very last resort, place it adjacent to player if map is tiny/full
+                        enemy = { x: player.x + 1 < tilesX -1 ? player.x + 1 : player.x -1 , y: player.y };
+                         if (m[enemy.y][enemy.x] === 1) { // if that spot is a wall, try another
+                            enemy = { x: player.x, y: player.y + 1 < tilesY -1 ? player.y + 1 : player.y -1 };
+                         }
+                         // If still a wall, then no enemy
+                         if (m[enemy.y][enemy.x] === 1) enemy = null;
+                    }
+                }
+            }
+            
+            // Special ghosts at specific levels and standard second ghost
+            ghost2 = null;
+            
+            // Handle special levels (30,40,50 for ghost devil, 60,70,80 for real devil)
+            if ([30, 40, 50, 60, 70, 80].includes(level) && accessibleCells.length > 3) {
+                // Play suspense music
+                GameMusic.playEffect('./sound/suspense.mp3');
+                
+                // For level 80, add two regular ghosts and cloud enemy
+                if (level === 80) {
+                    const minPlayerDistance = 4;
+                    const availableEnemyCells = accessibleCells.filter(([x, y]) => {
+                        if (x === player.x && y === player.y) return false; // Not on player
+                        if (Math.abs(x - player.x) + Math.abs(y - player.y) < minPlayerDistance) return false; // Min distance
+                        if (coins.some(c => c.x === x && c.y === y)) return false; // Not on coins
+                        return true;
+                    });
+                    
+                    if (availableEnemyCells.length > 0) {
+                        // Spawn first ghost
+                        const [ex, ey] = availableEnemyCells[Math.floor(Math.random() * availableEnemyCells.length)];
+                        enemy = { x: ex, y: ey };
+                        
+                        // Spawn second ghost
+                        const availableGhost2Cells = availableEnemyCells.filter(([x, y]) => 
+                            x !== enemy.x || y !== enemy.y
+                        );
+                        
+                        if (availableGhost2Cells.length > 0) {
+                            const [gx, gy] = availableGhost2Cells[Math.floor(Math.random() * availableGhost2Cells.length)];
+                            ghost2 = { x: gx, y: gy };
+                        }
+                        
+                        // Spawn cloud enemy
+                        cloudEnemy = {
+                            x: player.x,
+                            y: Math.max(1, player.y - 4), // Start 4 tiles above player if possible
+                            lastMoveTime: 0,
+                            moveDelay: 1000 // Moves slowly
+                        };
+                    }
+                }
+
+                // For levels 60,70,80 we'll add the real devil later
+                if (level < 60) { // This covers 30, 40, 50 for special ghost2
+                    const minPlayerDistanceGhost2 = 4;
+                    const availableGhost2Cells = accessibleCells.filter(([x, y]) => {
+                        if (x === player.x && y === player.y) return false; // Not on player
+                        if (Math.abs(x - player.x) + Math.abs(y - player.y) < minPlayerDistanceGhost2) return false; // Min distance
+                        if (coins.some(c => c.x === x && c.y === y)) return false; // Not on coins
+                        return true;
+                    });
+
+                    if (availableGhost2Cells.length > 0) {
+                        let [gx, gy] = availableGhost2Cells[Math.floor(Math.random() * availableGhost2Cells.length)];
+                        ghost2 = { 
+                            x: gx, 
+                            y: gy,
+                            isDevil: true // Flag to use devil graphics
+                        };
+                    }
+                }
+            }
+            // Regular ghost2 from level 20 if not a special level
+            else if (level >= 20 && accessibleCells.length > 3) {
+                const minPlayerDistanceGhost2 = 4;
+                let candidateCellsForGhost2 = accessibleCells.filter(([x, y]) => {
+                    if (x === player.x && y === player.y) return false; // Not on player
+                    if (Math.abs(x - player.x) + Math.abs(y - player.y) < minPlayerDistanceGhost2) return false; // Min distance
+                    if (enemy && x === enemy.x && y === enemy.y) return false; // Not on first enemy
+                    if (coins.some(c => c.x === x && c.y === y)) return false; // Not on coins
+                    if (prizes.some(p => p.x === x && p.y === y)) return false; // Not on prizes
+                    return true;
+                });
+
+                if (candidateCellsForGhost2.length > 0) {
+                    let ghost2Pos = null;
+                    if (enemy) { // Try to place opposite to enemy if enemy exists
+                        const vx = enemy.x - player.x;
+                        const vy = enemy.y - player.y;
+                        let minDotProduct = 0; // Looking for most negative dot product
+
+                        for (const [x, y] of candidateCellsForGhost2) {
+                            const wx = x - player.x;
+                            const wy = y - player.y;
+                            const dotProduct = vx * wx + vy * wy;
+                            if (dotProduct < minDotProduct) { 
+                                minDotProduct = dotProduct;
+                                ghost2Pos = [x, y];
+                            }
+                        }
+                    }
+
+                    if (ghost2Pos === null) { // If no opposite cell or no enemy, pick a random valid cell
+                        ghost2Pos = candidateCellsForGhost2[Math.floor(Math.random() * candidateCellsForGhost2.length)];
+                    }
+                    
+                    if (ghost2Pos) {
+                        ghost2 = { x: ghost2Pos[0], y: ghost2Pos[1] };
+                    }
+                }
+            }
+            
+            // The Devil enemy appears at levels 60,70,80 and from level 90
+            devil = null;
+            if ((level >= 90 || [60, 70, 80].includes(level)) && accessibleCells.length > 3) {
+                const minPlayerDistanceDevil = 6; // Devil should be far
+                const availableDevilCells = accessibleCells.filter(([x, y]) => {
+                    if (x === player.x && y === player.y) return false; // Not on player
+                    if (Math.abs(x - player.x) + Math.abs(y - player.y) < minPlayerDistanceDevil) return false; // Min distance
+                    if (coins.some(c => c.x === x && c.y === y)) return false; // Not on coins
+                    if (prizes.some(p => p.x === x && p.y === y)) return false; // Not on prizes
+                    if (enemy && x === enemy.x && y === enemy.y) return false; // Not on first enemy
+                    if (ghost2 && x === ghost2.x && y === ghost2.y) return false; // Not on second ghost
+                    return true;
+                });
+                
+                if (availableDevilCells.length > 0) {
+                    const [dx, dy] = availableDevilCells[Math.floor(Math.random() * availableDevilCells.length)];
+                    devil = { 
+                        x: dx, y: dy, 
+                        lastMoveTime: 0, 
+                    }; 
+                }
+                  // Level 80 enemy spawning is handled in the special levels section above
+            }            // Add cloud enemy initialization for specific levels and range 71-80
+            if ([51, 53, 56, 59, 61, 63, 65, 66, 68, 69, 80].includes(level) || (level >= 71 && level <= 80)) {
+                const availableCloudCells = accessibleCells.filter(([x, y]) => {
+                    return (x !== player.x || y !== player.y) && Math.abs(y - player.y) >= 4; // Not on player, at least 4 rows away
+                });
+
+                if (availableCloudCells.length > 0 && level !== 65) { // Skip for level 65 as it's handled in enemy generation
+                    const [cx, cy] = availableCloudCells[Math.floor(Math.random() * availableCloudCells.length)];
+                    cloudEnemy = {
+                        x: cx,
+                        y: cy,
+                        lastMoveTime: 0,
+                        moveDelay: 1000 // Moves slowly
+                    };
+                }
+            } else {
+                cloudEnemy = null; // Ensure it doesn't spawn in other levels
+            }            // Initialize skulls array for this level
+            skulls = [];
+            // Custom skull spawning schedule
+            const skullSchedule = {
+                13: 1,
+                14: 1,
+                25: 1,
+                32: 1,
+                34: 3,
+                36: 2,
+                37: 2,
+                39: 2,
+                40: 2,
+                42: 2,
+                46: 1,
+                48: 10,
+                55: 3,
+                58: 3,
+                59: 10,
+                61: 2,
+                62: 4,
+                64: 5,
+                65: 8,
+                67: 10,
+                68: 2,
+                69: 1,
+                70: 7,
+                71: 1,
+                72: 2,
+                73: 3,
+                74: 4,
+                75: 20,
+                76: 6,
+                77: 7,
+                78: 8,
+                79: 15,
+                80: 9
+            };
+            
+            // Only spawn skulls if the current level is in skullSchedule and > 0
+            if (skullSchedule[level] > 0 && accessibleCells.length > 3) {
+                const skullCount = skullSchedule[level];
+                // Find accessible cells that don't have a coin, prize, bone, life, or player
+                let availableCellsForSkull = accessibleCells.filter(([x, y]) =>
+                    !coins.some(c => c.x === x && c.y === y) &&
+                    !prizes.some(p => p.x === x && p.y === y) &&
+                    !bones.some(b => b.x === x && b.y === y) &&
+                    !lifeItems.some(l => l.x === x && l.y === y) &&
+                    !(player.x === x && player.y === y)
+                );
+
+                // Helper: BFS to check if a path exists from player to a coin, avoiding a given cell
+                function isPathToAnyCoinWithoutCell(blockX, blockY) {
+                    const visited = Array.from({length: tilesY}, () => Array(tilesX).fill(false));
+                    const queue = [[player.x, player.y]];
+                    visited[player.y][player.x] = true;
+                    while (queue.length) {
+                        const [cx, cy] = queue.shift();
+                        if (coins.some(c => c.x === cx && c.y === cy)) return true;
+                        for (const [dx, dy] of [[0,1],[1,0],[0,-1],[-1,0]]) {
+                            const nx = cx + dx, ny = cy + dy;
+                            if (
+                                nx >= 0 && ny >= 0 && nx < tilesX && ny < tilesY &&
+                                maze[ny][nx] === 0 &&
+                                !(nx === blockX && ny === blockY) &&
+                                !visited[ny][nx]
+                            ) {
+                                visited[ny][nx] = true;
+                                queue.push([nx, ny]);
+                            }
+                        }
+                    }
+                    return false;
+                }
+
+                // Only allow skulls in cells that do not block all paths to coins
+                availableCellsForSkull = availableCellsForSkull.filter(([x, y]) => isPathToAnyCoinWithoutCell(x, y));
+
+                // Spawn the specified number of skulls for this level
+                if (availableCellsForSkull.length > 0) {
+                    for (let i = 0; i < skullCount && i < availableCellsForSkull.length; i++) {
+                        const randomIndex = Math.floor(Math.random() * availableCellsForSkull.length);
+                        const [sx, sy] = availableCellsForSkull[randomIndex];
+                        skulls.push({ x: sx, y: sy });
+                        // Remove the selected cell to avoid duplicates
+                        availableCellsForSkull.splice(randomIndex, 1);
+                    }
+                }
+            }
+
+            // Limit obstacles to 10 for level 59
+            if (level === 59) {
+                // Remove all obstacles
+                for (let y = 1; y < tilesY - 1; y++) {
+                    for (let x = 1; x < tilesX - 1; x++) {
+                        if (m[y][x] === 1) m[y][x] = 0;
+                    }
+                }
+                // Place exactly 10 obstacles
+                let placed = 0;
+                while (placed < 10) {
+                    let rx = Math.floor(Math.random() * (tilesX-2)) + 1;
+                    let ry = Math.floor(Math.random() * (tilesY-2)) + 1;
+                    if (m[ry][rx] === 0 && canPlaceObstacle(m, rx, ry)) {
+                        m[ry][rx] = 1;
+                        placed++;
+                    }
+                }
+            }
+
+            // Make 12 obstacles dynamic for level 77
+            if (level === 77) {
+                // Collect all wall tiles in the play area
+                let wallTiles = [];
+                for (let y = 1; y < tilesY - 1; y++) {
+                    for (let x = 1; x < tilesX - 1; x++) {
+                        if (m[y][x] === 1) wallTiles.push({x, y});
+                    }
+                }
+                // Shuffle and pick 12
+                wallTiles = wallTiles.sort(() => Math.random() - 0.5).slice(0, 12);
+                for (const tile of wallTiles) {
+                    dynamicObstaclesList.push(tile);
+                    m[tile.y][tile.x] = 0; // Start as path, will toggle in draw()
+                }
+            }
+            // For level 75: 10 dynamic obstacles, 5 regular obstacles
+            if (level === 75) {
+                // Collect all wall tiles in the play area
+                let wallTiles = [];
+                for (let y = 1; y < tilesY - 1; y++) {
+                    for (let x = 1; x < tilesX - 1; x++) {
+                        if (m[y][x] === 1) wallTiles.push({x, y});
+                    }
+                }
+                // Shuffle
+                wallTiles = wallTiles.sort(() => Math.random() - 0.5);
+                // First 10 become dynamic
+                for (let i = 0; i < 10 && i < wallTiles.length; i++) {
+                    dynamicObstaclesList.push(wallTiles[i]);
+                    m[wallTiles[i].y][wallTiles[i].x] = 0; // Start as path, will toggle in draw()
+                }
+                // Next 5 remain as regular obstacles (leave as wall)
+                // All others (if any) are set to path
+                for (let i = 10 + 5; i < wallTiles.length; i++) {
+                    m[wallTiles[i].y][wallTiles[i].x] = 0;
+                }
+            }
+
+            return m;
+        }
+
+        // --- Player Hurt State ---
+let playerHurt = false;
+let playerHurtTimeout = null;
+// Input tracking for movement and obstacle safety checks
+let inputQueue = [];
+
+function triggerPlayerHurt() {
+    playerHurt = true;
+    if (playerHurtTimeout) clearTimeout(playerHurtTimeout);
+    playerHurtTimeout = setTimeout(() => {
+        playerHurt = false;
+    }, 1000);
+}
+
+        function draw() {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // --- Handle Dynamic Obstacles (Level 22+) ---
+            const nowForDynamic = Date.now();
+            if (level >= 22 && (dynamicObstaclesList.length > 0 || fireObstaclesList.length > 0)) {
+                if (nowForDynamic - lastObstacleToggleTime > DYNAMIC_OBSTACLE_INTERVAL) {
+                    dynamicObstaclesVisible = !dynamicObstaclesVisible;
+                    fireObstaclesActive = !fireObstaclesActive;
+                    lastObstacleToggleTime = nowForDynamic;
+
+                    // Update the maze array for regular dynamic obstacles
+                    for (const obs of dynamicObstaclesList) {
+                        if (maze[obs.y] && maze[obs.y][obs.x] !== undefined) {
+                            // Check both current player position and their next intended position
+                            const isPlayerCurrentlyHere = player.x === obs.x && player.y === obs.y;
+                            const isPlayerMovingHere = 
+                                (inputQueue.includes('ArrowRight') && player.x + 1 === obs.x && player.y === obs.y) ||
+                                (inputQueue.includes('ArrowLeft') && player.x - 1 === obs.x && player.y === obs.y) ||
+                                (inputQueue.includes('ArrowUp') && player.x === obs.x && player.y - 1 === obs.y) ||
+                                (inputQueue.includes('ArrowDown') && player.x === obs.x && player.y + 1 === obs.y);
+
+                            if (dynamicObstaclesVisible && (isPlayerCurrentlyHere || isPlayerMovingHere)) {
+                                // Don't turn it into a wall if player is there or moving there
+                            } else {
+                                maze[obs.y][obs.x] = dynamicObstaclesVisible ? 1 : 0;
+                            }
+                        }
+                    }
+
+                    // Check if player is on fire when it activates
+                    if (fireObstaclesActive) {
+                        for (const fire of fireObstaclesList) {
+                            if (player.x === fire.x && player.y === fire.y) {
+                                loseLife();
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Draw background image first, scaled to cover canvas
+            if (backgroundImg.complete && backgroundImg.naturalWidth > 0) {
+                ctx.save(); // Save current context state
+                ctx.globalAlpha = 0.1; // Set transparency to 90% (0.1 opacity)
+                ctx.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height);
+                ctx.restore(); // Restore context state, so other elements are not transparent
+            }
+            
+            // Draw maze
+            for (let y = 0; y < tilesY; y++) {
+                for (let x = 0; x < tilesX; x++) {
+                    if (maze[y][x] === 1) { // If it's a wall
+                        // Check if it's a dynamic obstacle and if it should be "invisible" but still collidable
+                        const isDynamic = dynamicObstaclesList.some(obs => obs.x === x && obs.y === y);
+                        if (isDynamic && !dynamicObstaclesVisible) {
+                            // If dynamic and currently invisible, draw as path (or with a subtle hint)
+                            // For now, it will look like a path, but collision is handled by maze[y][x] = 0 above
+                            // To make it visually disappear but still block, we'd draw nothing here
+                            // and ensure maze[y][x] remains 1 for collision.
+                            // Current implementation: it becomes a path visually and functionally.
+                            ctx.fillStyle = 'rgba(68, 68, 68, 0.3)'; // Slightly visible hint of where it was
+                            ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+                        } else {
+                            ctx.fillStyle = '#444'; // Wall color
+                            ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+                        }
+                    } else {
+                        // Path areas (maze[y][x] === 0) will show the backgroundImg
+                    }
+                }
+            }
+            
+            // Draw coins
+            for (const coin of coins) {
+                ctx.drawImage(coinImg, coin.x*tileSize+6, coin.y*tileSize+6, tileSize-12, tileSize-12);
+            }
+            
+            const now = Date.now();
+
+            // Draw bones with slight pulsing effect
+            for (const bone of bones) {
+                const boneScale = 1 + Math.sin(now / 600) * 0.05; // Subtle pulsing
+                const boneSize = (tileSize - 10) * boneScale;
+                const boneOffset = (tileSize - boneSize) / 2;
+                
+                ctx.drawImage(
+                    boneImg,
+                    bone.x * tileSize + boneOffset,
+                    bone.y * tileSize + boneOffset,
+                    boneSize,
+                    boneSize
+                );
+            }
+            
+            // Draw lives with smooth lateral movement (reduced by 50%)
+            const lifeSwingOffset = Math.sin(now / 500) * 4; // Oscillation from -4px to 4px (reduced by 50%)
+            
+            for (const life of lifeItems) {
+                // Apply smooth lateral movement to lives
+                ctx.drawImage(
+                    lifeImg, 
+                    life.x * tileSize + 6 + lifeSwingOffset, 
+                    life.y * tileSize + 6, 
+                    tileSize - 12, 
+                    tileSize - 12
+                );
+            }
+            
+            // Draw prizes with pulsation effect (grows/shrinks)
+            const prizeScaleFactor = 1 + Math.sin(now / 400) * 0.15; // Scale between 0.85 and 1.15
+            for (const prize of prizes) {
+                // Calculate size and offset to center the image when scaling
+                const prizeSize = (tileSize - 12) * prizeScaleFactor;
+                const offsetX = (tileSize - prizeSize) / 2;
+                
+                // Apply scaling effect to prizes
+                ctx.drawImage(
+                    prizeImg, 
+                    prize.x * tileSize + offsetX, 
+                    prize.y * tileSize + offsetX, 
+                    prizeSize, 
+                    prizeSize
+                );
+            }
+            
+            // Draw the giant ghost for level 36
+    if (giantGhost) {
+        ctx.save();
+        ctx.globalAlpha = 0.9 + Math.sin(Date.now() / 500) * 0.1; // Pulsing opacity
+        // Draw a 2x2 ghost
+        const ghostSize = tileSize * 2;
+        ctx.drawImage(
+            ghostImg,
+            giantGhost.x * tileSize,
+            giantGhost.y * tileSize,
+            ghostSize,
+            ghostSize
+        );
+        
+        // Add a menacing glow effect
+        ctx.globalAlpha = 0.3;
+        ctx.fillStyle = '#ff0000';
+        ctx.filter = 'blur(8px)';
+        ctx.fillRect(
+            giantGhost.x * tileSize,
+            giantGhost.y * tileSize,
+            ghostSize,
+            ghostSize
+        );
+        ctx.restore();
+    }            // Draw regular enemies if not a giant ghost level (36, 45, 55)
+            // Level 45 has both giant ghost and 1 regular ghost
+            // Level 55 has giant ghost and all 3 regular ghosts
+            if (level !== 36) {
+                if (enemy) {
+                    ctx.drawImage(ghostImg, enemy.x*tileSize, enemy.y*tileSize, tileSize, tileSize);
+                }
+
+                // Draw friendly dog (if it exists)
+                if (friendlyDog) {
+                    if (friendlyDog.isFighting) {
+                        // Draw fight animation
+                        const currentTime = Date.now();
+                        const fightProgress = (currentTime - friendlyDog.fightStartTime) / 1000; // 0 to 1
+                        
+                        if (fightProgress < 1) { // Only draw if animation hasn't finished
+                            const rotationAngle = fightProgress * Math.PI * 4; // Spin twice during the fight
+                            
+                            ctx.save();
+                            // Center of the fight
+                            const centerX = friendlyDog.x * tileSize + tileSize / 2;
+                            const centerY = friendlyDog.y * tileSize + tileSize / 2;
+                            
+                            ctx.translate(centerX, centerY);
+                            ctx.rotate(rotationAngle);
+                            ctx.translate(-tileSize/2, -tileSize/2);
+                            
+                            // Draw the fight sprite
+                            ctx.drawImage(fightImg, 0, 0, tileSize, tileSize);
+                            ctx.restore();
+                        } else {
+                            // Animation finished - clean up
+                            friendlyDog = null;
+                        }
+                    } else {
+                        // Normal dog appearance
+                        ctx.drawImage(angryDogImg, friendlyDog.x*tileSize, friendlyDog.y*tileSize, tileSize, tileSize);
+                    }
+                    moveFriendlyDog(); // Update dog position
+                }
+                
+                // Draw devil (with improved animation on special levels)
+                if (devil) {
+                    const devilScale = 1 + Math.sin(now /  600) * 0.1; // Stronger pulsing effect
+                    const devilSize = tileSize * devilScale;
+                    const devilOffset = (tileSize - devilSize) / 2;
+                    
+                    ctx.save();
+                    if ([60, 70, 80].includes(level)) {
+                        // Enhanced devil appearance for special levels
+                        ctx.globalAlpha = 0.9 + Math.sin(now / 400) * 0.1;
+                        ctx.filter = 'brightness(1.3) contrast(1.2)';
+                    }
+                    ctx.drawImage(devilImg, 
+                        devil.x*tileSize + devilOffset, 
+                        devil.y*tileSize + devilOffset, 
+                        devilSize, devilSize
+                    );
+                    ctx.restore();
+                }
+                
+                               
+                // Draw second ghost (if it exists)
+                if (ghost2) {                
+                    const scale = 1 + Math.sin(now / 750) * 0.05;
+                    const size = tileSize * scale;
+                    const offset = (tileSize - size) / 2;
+                    
+                    ctx.save();
+                    
+                    if (ghost2.isDevil) {
+                        // For devil ghost (levels 30,40,50), draw with devil graphics
+                        ctx.globalAlpha = 0.8 + Math.sin(now / 500) * 0.2;
+                        ctx.drawImage(
+                            devilImg,
+                            ghost2.x*tileSize + offset,
+                            ghost2.y*tileSize + offset,
+                            size,
+                            size
+                        );
+                    } else {
+                        // Regular ghost2 appearance
+                        ctx.globalAlpha = 0.8 + Math.sin(now / 500) * 0.2;
+                        ctx.filter = 'hue-rotate(120deg) brightness(1.2)';
+                        ctx.drawImage(
+                            ghostImg, 
+                            ghost2.x*tileSize + offset, 
+                            ghost2.y*tileSize + offset, 
+                            size, 
+                            size
+                        );
+                    }
+                    ctx.restore();
+                }
+            }
+              // Draw player (mirrored if lastDir is right)
+            ctx.save();
+            const playerImg = playerHurt ? bonchurtImg : boncImg;
+            if (player.lastDir === 'right') {
+                // Move origin to the right edge of the tile, then flip
+                ctx.translate((player.x + 1) * tileSize, player.y * tileSize);
+                ctx.scale(-1, 1);
+                ctx.drawImage(playerImg, 0, 0, tileSize, tileSize);
+            } else {
+                // Default: facing left
+                ctx.drawImage(playerImg, player.x * tileSize, player.y * tileSize, tileSize, tileSize);
+            }
+            ctx.restore();
+            
+                       
+            // Draw cloud enemy (if it exists)
+            if (cloudEnemy) {
+                const cloudImg = new Image();
+                cloudImg.src = './assets/cloud.png';
+                ctx.drawImage(cloudImg, cloudEnemy.x * tileSize, cloudEnemy.y * tileSize, tileSize, tileSize);
+            }
+            
+            // Draw skulls (make sure this is after maze, before player)
+            for (const skull of skulls) {
+                // Draw subtle red glow
+                ctx.save();
+                ctx.shadowColor = 'rgba(255,0,0,0.25)'; // Subtle red glow
+                ctx.shadowBlur = 12; // Soft outer glow
+                ctx.drawImage(skullImg, skull.x * tileSize + 6, skull.y * tileSize + 6, tileSize - 12, tileSize - 12);
+                ctx.restore();
+            }
+        }
+        
+        
+        function collectLife() {
+            if (lives < maxLives) {
+                lives++;
+                updateLivesDisplay();
+                
+                // Play life pickup sound
+                GameMusic.playEffect('./sound/life.mp3');
+            } else {
+                score += 100;
+                document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
+                showMaxLivesMsg();
+            }
+        }
+        
+        function movePlayer(dir = null) {
+            if (won || paused) return;
+            let dx = 0, dy = 0;
+            if (dir === 'up') dy = -1;
+            if (dir === 'down') dy = 1;
+            if (dir === 'left') dx = -1;
+            if (dir === 'right' ) dx = 1;
+            let nx = player.x + dx, ny = player.y + dy;
+            if (maze[ny] && maze[ny][nx] === 0) {
+                player.x = nx;
+                player.y = ny;
+                if (dir === 'left' || dir === 'right') {
+                    player.lastDir = dir;
+                }
+                player.dir = dir;
+
+                // Check if player stepped on active fire
+                if (fireObstaclesActive && level >= 22) {
+                    for (const fire of fireObstaclesList) {
+                        if (player.x === fire.x && player.y === fire.y) {
+                            loseLife();
+                            break;
+                        }
+                    }
+                }
+                  // Collect coins
+                for (let i = 0; i < coins.length; i++) {
+                    if (coins[i].x === player.x && coins[i].y === player.y) {
+                        coins.splice(i, 1);
+                        score++;
+                        document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
+                        
+                        // Play prize sound for last coin in level 80, otherwise regular coin sound
+                        if (level === 80 && coins.length === 0) {
+                            GameMusic.playEffect('./sound/prize.mp3');
+                        } else {
+                            GameMusic.playEffect('./sound/coin.mp3');
+                        }
+                        break;
+                    }
+                }
+                
+                // Collect extra life
+                for (let i = 0; i < lifeItems.length; i++) {
+                    if (lifeItems[i].x === player.x && lifeItems[i].y === player.y) {
+                        lifeItems.splice(i, 1);
+                        collectLife();
+                        break;
+                    }
+                }
+                
+                // Collect prize
+                for (let i = 0; i < prizes.length; i++) {
+                    if (prizes[i].x === player.x && prizes[i].y === player.y) {                        prizes.splice(i, 1);
+                        score += 5; // Prize gives 5 points
+                        document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
+                        
+                        // Play prize sound
+                        GameMusic.playEffect('./sound/prize.mp3');
+                        break;
+                    }
+                }
+
+                // Collect bone
+                for (let i = 0; i < bones.length; i++) {
+                    if (bones[i].x === player.x && bones[i].y === player.y) {
+                        bones.splice(i, 1);
+                        score++; // Bone gives 1 point
+                        document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
+                        // Play dog sound
+                        GameMusic.playEffect('./sound/dog.mp3');
+                        // Spawn friendly entity
+                        spawnFriendlyDog(player.x, player.y);
+                        break;
+                    }
+                }
+                // Collect skull
+                for (let i = 0; i < skulls.length; i++) {
+                    if (skulls[i].x === player.x && skulls[i].y === player.y) {
+                        // Check for skull grace period
+                        if (!player.skullGraceUntil || player.skullGraceUntil < Date.now()) {
+                            skulls.splice(i, 1);
+                            loseLife(); // Only lose a life, do not move player
+                            // Set skull grace period (invulnerability)
+                            player.skullGraceUntil = Date.now() + 600;
+                        }
+                        break;
+                    }
+                }
+
+                // Go to next level
+                if (coins.length ===  0) {
+                    // If we completed level 80, end the game
+                    if (level === 80) {
+                        winGame();
+                        return;
+                    }
+                    // If we're at level 79, go to the final level 80
+                    if (level === 79) {
+                        level = 80;
+                    } else {
+                        level++;
+                    }
+                    maze = generateMazeAI(level);
+                    document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
+                    // Reset lifeItems and spawn according to new rules
+                    lifeItems = [];
+                    if (level >= 5 && (level - 5) % 3 === 0) {
+                        spawnLifeItem();
+                        // Chance for second life based on level
+                        if (level >= 25 && Math.random() < getSecondLifeProbability(level)) {
+                            spawnLifeItem();
+                        }
+                    }
+                    // Update music and play level transition sound
+                    GameMusic.updateForLevel(level);
+                    
+                    /* 
+                    // ORIGINAL CODE FOR LEVELS BEYOND 80 (commented out)
+                    if (level >= 100) {
+                        winGame();
+                        return;
+                    }
+                    // If next level would be greater than 100, set it exactly to 100
+                    if (level === 99) {
+                        level = 100;
+                    }
+                    */
+                }
+            }
+            draw();
+        }
+
+        function keyToDir(key) {
+            if (key === 'ArrowUp' || key === 'w' || key === 'W') return 'up';
+            if (key === 'ArrowDown' || key === 's' || key === 'S') return 'down';
+            if (key === 'ArrowLeft' || key === 'a' || key === 'A') return 'left';
+            if (key === 'ArrowRight' || key === 'd' || key === 'D') return 'right';
+            return null;
+        }
+
+        let moveDir = null;
+        let moveInterval = null;
+        
+        document.addEventListener('keydown', e => {
+            // Prevent scrolling with arrow keys
+            if (e.key.startsWith('Arrow')) {
+                e.preventDefault();
+                // Add to input queue for dynamic obstacles safety check
+                if (!inputQueue.includes(e.key)) {
+                    inputQueue.push(e.key);
+                }
+            }
+            
+            if (won) {
+                if (e.key === ' ' || e.key === 'Enter') playAgain();
+                return;
+            }
+            
+            // Pause with P
+            if (e.key === 'p' || e.key === 'P') {
+                togglePause();
+                return;
+            }
+            
+            // Toggle music with M key
+            if (e.key === 'm' || e.key === 'M') {
+                GameMusic.enabled = !GameMusic.enabled;
+                const musicToggle = document.getElementById('musicToggle');
+                musicToggle.classList.toggle('off', !GameMusic.enabled);
+                musicToggle.querySelector('span').textContent = `Music: ${GameMusic.enabled ? 'On' : 'Off'}`;
+                
+                if (GameMusic.enabled) {
+                    if (!paused && !won) {
+                        GameMusic.updateForLevel(level);
+                    }
+                } else {
+                    GameMusic.stop();
+                }
+                return;
+            }
+              // Skip to next level with Ñ (but not beyond level 80)
+            if ((e.key === 'ñ' || e.key === 'Ñ') && !paused) {
+                // If we're already at level 80, end the game
+                if (level === 80) {
+                    winGame();
+                    return;
+                }
+                // If next level would be 81, end the game instead
+                if (level === 79) {
+                    level = 80;
+                } else {
+                    level++;
+                }
+                maze = generateMazeAI(level);
+                document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
+                // Reset lifeItems and spawn according to new rules
+                lifeItems = [];
+                if (level >= 5 && (level - 5) % 3 === 0) {
+                    spawnLifeItem();
+                    // Chance for second life based on level
+                    if (level >= 25 && Math.random() < getSecondLifeProbability(level)) {
+                        spawnLifeItem();
+                    }
+                }
+                // Update music for new level
+                GameMusic.updateForLevel(level);
+                draw();
+                return;
+            }
+            
+            // Resume with space or enter
+            if (paused && (e.key === ' ' || e.key === 'Enter')) {
+                togglePause(false);
+                return;
+            }
+            
+            // Movement
+            const dir = keyToDir(e.key);
+            if (dir && moveDir !== dir && !paused) {
+                moveDir = dir;
+                movePlayer(dir);
+                if (moveInterval) clearInterval(moveInterval);
+                moveInterval = setInterval(() => movePlayer(dir), 100);
+            }
+        });
+        
+        document.addEventListener('keyup', e => {
+            const dir = keyToDir(e.key);
+            if (dir && moveDir === dir) {
+                moveDir = null;
+                if (moveInterval) clearInterval(moveInterval);
+            }
+            
+            // Remove from input queue when key is released
+            if (e.key.startsWith('Arrow')) {
+                inputQueue = inputQueue.filter(key => key !== e.key);
+            }
+        });document.addEventListener('mousedown', (e) => {
+            // Only unpause if not clicking on the pause toggle button
+            if (paused && !e.target.closest('#pauseToggle')) {
+                togglePause(false);
+            }
+        });
+          // Mobile control handlers
+        function setupMobileControls() {
+            const btnUp = document.getElementById('btn-up');
+            const btnRight = document.getElementById('btn-right');
+            const btnDown = document.getElementById('btn-down');
+            const btnLeft = document.getElementById('btn-left');
+            
+            // Update control positions based on canvas size
+            updateMobileControlsPosition();
+              // Helper function to handle button events
+            function handleDirectionButton(element, direction) {
+                // Map direction to Arrow key for input queue
+                const dirToArrow = {
+                    'up': 'ArrowUp',
+                    'down': 'ArrowDown',
+                    'left': 'ArrowLeft',
+                    'right': 'ArrowRight'
+                };
+                
+                // Touch start / mouse down - start moving
+                const startHandler = (e) => {
+                    e.preventDefault(); // Prevent scrolling on touch devices
+                    if (won || paused) return;
+                    
+                    moveDir = direction;
+                    // Add to input queue for dynamic obstacles safety check
+                    const arrowKey = dirToArrow[direction];
+                    if (arrowKey && !inputQueue.includes(arrowKey)) {
+                        inputQueue.push(arrowKey);
+                    }
+                    
+                    movePlayer(direction);
+                    if (moveInterval) clearInterval(moveInterval);
+                    moveInterval = setInterval(() => movePlayer(direction), 100);
+                };
+                
+                // Touch end / mouse up - stop moving
+                const endHandler = () => {
+                    if (moveDir === direction) {
+                        moveDir = null;
+                        if (moveInterval) clearInterval(moveInterval);
+                        
+                        // Remove from input queue
+                        const arrowKey = dirToArrow[direction];
+                        if (arrowKey) {
+                            inputQueue = inputQueue.filter(key => key !== arrowKey);
+                        }
+                    }
+                };
+                
+                // Add event listeners for both mouse and touch events
+                element.addEventListener('mousedown', startHandler);
+                element.addEventListener('touchstart', startHandler);
+                
+        // Stop movement when touch/click ends
+                element.addEventListener('mouseup', endHandler);
+                element.addEventListener('mouseleave', endHandler);
+                element.addEventListener('touchend', endHandler);
+                element.addEventListener('touchcancel', endHandler);
+            }
+            
+            // Set up each directional button
+            handleDirectionButton(btnUp, 'up');
+            handleDirectionButton(btnRight, 'right');
+            handleDirectionButton(btnDown, 'down');
+            handleDirectionButton(btnLeft, 'left');
+        }
+        
+        // Function to update mobile controls position based on canvas size
+        function updateMobileControlsPosition() {
+            const canvas = document.getElementById('gameCanvas');
+            const btnUp = document.getElementById('btn-up');
+            const btnRight = document.getElementById('btn-right');
+            const btnDown = document.getElementById('btn-down');
+            const btnLeft = document.getElementById('btn-left');
+            
+            // Check if elements exist
+            if (!canvas || !btnUp || !btnRight || !btnDown || !btnLeft) return;
+            
+            // Responsive positioning based on canvas size
+            const margin = Math.max(20, Math.min(60, canvas.width / 10)); // Scale margin with canvas size
+              // Position buttons on the outer edges of canvas
+            btnRight.style.right = `10px`;
+            btnLeft.style.left = `10px`;
+            btnUp.style.top = `10px`;
+            btnDown.style.bottom = `10px`;
+              // Adjust button size based on canvas
+            const buttonSize = Math.max(40, Math.min(80, canvas.width / 8));
+            const arrowSize = buttonSize * 0.6;
+            
+            [btnUp, btnRight, btnDown, btnLeft].forEach(btn => {
+                btn.style.width = `${buttonSize}px`;
+                btn.style.height = `${buttonSize}px`;
+                
+                // Adjust arrow size
+                const img = btn.querySelector('img');
+                if (img) {
+                    img.style.width = `${arrowSize}px`;
+                    img.style.height = `${arrowSize}px`;
+                }
+            });
+            
+            
+            // Ensure horizontal centering of buttons
+            btnUp.style.left = `50%`;
+            btnDown.style.left = `50%`;
+            btnRight.style.top = `50%`;
+                       btnLeft.style.top = `50%`;
+        }          function togglePause(force = null) {
+            if (won) return;
+            
+            // Handle force parameter explicitly to avoid potential issues
+            if (force === true) {
+                paused = true;
+            } else if (force === false) {
+                paused = false;
+            } else {
+                // If no force parameter, just toggle the current state
+                paused = !paused;
+            }
+            
+            document.getElementById('pausedMsg').style.display = paused ? 'block' : 'none';
+            
+            // Update pause button appearance
+            const pauseToggle = document.getElementById('pauseToggle');
+            pauseToggle.classList.toggle('paused', paused);
+            pauseToggle.querySelector('span').textContent = paused ? 'Resume' : 'Pause';
+            
+            // Toggle music based on pause state
+            GameMusic.toggle(!paused);
+        }
+        
+        function winGame() {
+            won = true;
+            document.getElementById('winText').innerHTML = `You've won! Well done!<br>Your Score: <b>${score}</b>`;
+            document.getElementById('winMenu').style.display = 'flex';
+            
+            // Stop the music when game is won
+            GameMusic.stop();
+        }
+        
+        function takeScreenshot() {
+            // Hide screenshot button temporarily for the capture
+            const screenshotBtn = document.querySelector('#screenshotBtn');
+            if (screenshotBtn) {
+                screenshotBtn.style.display = 'none';
+            }
+            
+            // Capture the canvas and copy it to clipboard
+            try {
+                // Remove any previous confirmation message
+                const prevMsg = document.querySelector('#clipboardMsg');
+                if (prevMsg) prevMsg.remove();
+                
+                canvas.toBlob(function(blob) {
+                    const item = new ClipboardItem({ "image/png": blob });
+                    navigator.clipboard.write([item]).then(function() {
+                        // Show confirmation message
+                        const confirmMsg = document.createElement('div');
+                        confirmMsg.id = 'clipboardMsg';
+                        confirmMsg.textContent = 'Copied to clipboard!';
+                        confirmMsg.style.color = '#FFD600';
+                        confirmMsg.style.fontSize = '0.7em';
+                        confirmMsg.style.marginBottom = '15px';
+                        document.getElementById('winMenu').insertBefore(confirmMsg, document.querySelector('#winMenu button'));
+                        
+                        // Show button again
+                        if (screenshotBtn) {
+                            screenshotBtn.style.display = 'block';
+                        }
+                        
+                        // Remove message after 2 seconds
+                        setTimeout(() => {
+                            if (confirmMsg.parentNode) {
+                                confirmMsg.remove();
+                            }
+                        }, 2000);
+                    }, function(error) {
+                        console.error("Could not copy to clipboard: ", error);
+                        // Show error message
+                        const errorMsg = document.createElement('div');
+                        errorMsg.id = 'clipboardMsg';
+                        errorMsg.textContent = 'Error copying to clipboard!';
+                        errorMsg.style.color = 'red';
+                        errorMsg.style.fontSize = '0.7em';
+                        errorMsg.style.marginBottom = '15px';
+                        document.getElementById('winMenu').insertBefore(errorMsg, document.querySelector('#winMenu button'));
+                        
+                        // Show button again
+                        if (screenshotBtn) {
+                            screenshotBtn.style.display = 'block';
+                        }
+                        
+                        // Remove message after 2 seconds
+                        setTimeout(() => {
+                            if (errorMsg.parentNode) {
+                                errorMsg.remove();
+                            }
+                        }, 2000);
+                    });
+                }, 'image/png');
+            } catch (error) {
+                console.error("Error creating blob: ", error);
+                if (screenshotBtn) {
+                    screenshotBtn.style.display = 'block';
+                }
+            }
+        }
+        
+        // Helper function to get second life probability based on level
+function getSecondLifeProbability(level) {
+    if (level >= 65) return 0.7;    // 70% chance after level 65
+    if (level >= 55) return 0.6;    // 60% chance after level 55
+    if (level >= 45) return 0.5;    // 50% chance after level 45
+    if (level >= 35) return 0.4;    // 40% chance after level 35
+    if (level >= 25) return 0.3;    // 30% chance after level 25
+    return 0;                       // No second life before level 25
+}
+
+// Utility to get a random empty cell
+function getRandomEmptyCell() {
+    let emptyCells = [];
+    for (let y = 0; y < tilesY; y++) {
+        for (let x = 0; x < tilesX; x++) {
+            // Check if cell is empty and not occupied by player or other items
+            if (maze[y][x] === 0 &&
+                !(player.x === x && player.y === y) &&
+                !coins.some(c => c.x === x && c.y === y) &&
+                !bones.some(b => b.x === x && b.y === y) &&
+                !prizes.some(p => p.x === x && p.y === y) &&
+                !skulls.some(s => s.x === x && s.y === y) &&
+                !lifeItems.some(l => l.x === x && l.y === y)) {
+                emptyCells.push({x, y});
+            }
+        }
+    }
+    if (emptyCells.length === 0) return null;
+    return emptyCells[Math.floor(Math.random() * emptyCells.length)];
+}
+
+// Function to spawn a life item at a random empty cell
+function spawnLifeItem() {
+    const cell = getRandomEmptyCell();
+    if (cell) {
+        lifeItems.push({ x: cell.x, y: cell.y });
+    }
+}
+
+        window.playAgain = function() {
+            won = false;
+            score = 0;
+            level = 1;
+            lives = 3;
+            maze = generateMazeAI(level);
+            document.getElementById('scoreText').textContent = `Score: ${score} | Level: ${level}`;
+            document.getElementById('winMenu').style.display = 'none';
+            updateLivesDisplay();
+            lifeItems = [];
+            // No life spawn at level 1
+            GameMusic.stop();
+            GameMusic.updateForLevel(level);
+            player.skullGraceUntil = 0;
+            draw();
+        }
+
+        function loseLife() {
+            lives--;
+            updateLivesDisplay();
+            triggerPlayerHurt(); // Show hurt sprite
+            if (lives <= 0) {
+                won = true;
+                document.getElementById('winText').innerHTML = `Game Over!<br>Your score: <b>${score}</b>`;
+                document.getElementById('winMenu').style.display = 'flex';
+                
+                // Stop music when game is over
+                GameMusic.stop();
+            } else {
+                // Play hurt sound
+                GameMusic.playEffect('./sound/life.mp3');
+                // Do NOT move player to center on skull hit
+                draw();
+            }
+        }
+
+        // Ghost movement
+        function moveEnemies() {
+            if (won || paused) return;
+            
+            // No enemy movement for levels 1-3
+            if (level < 4) return;
+            
+            // Handle giant ghost movement for levels 36, 45, 55, and 65
+            if ([36, 45, 55, 65].includes(level) && giantGhost) {
+                const currentTime = Date.now();
+                if (currentTime - giantGhost.lastMoveTime >= giantGhost.moveDelay) {
+                    giantGhost.lastMoveTime = currentTime;
+                    
+                    // Calculate direction to player
+                    const dx = player.x - giantGhost.x;
+                    const dy = player.y - giantGhost.y;
+                    
+                    // Try to move in the direction of the player
+                    let moveX = Math.sign(dx);
+                    let moveY = Math.sign(dy);
+                    
+                    // Check if the entire 2x2 area is free for movement
+                    const canMoveX = moveX !== 0 && 
+                        maze[giantGhost.y][giantGhost.x + moveX] === 0 &&
+                        maze[giantGhost.y + 1][giantGhost.x + moveX] === 0 &&
+                        maze[giantGhost.y][giantGhost.x + 1 + moveX] === 0 &&
+                        maze[giantGhost.y + 1][giantGhost.x + 1 + moveX] === 0;
+                
+                    const canMoveY = moveY !== 0 &&
+                        maze[giantGhost.y + moveY][giantGhost.x] === 0 &&
+                        maze[giantGhost.y + moveY][giantGhost.x + 1] === 0 &&
+                        maze[giantGhost.y + 1 + moveY][giantGhost.x] === 0 &&
+                        maze[giantGhost.y + 1 + moveY][giantGhost.x + 1] === 0;
+            
+                    // Move in the available direction
+                    if (Math.abs(dx) > Math.abs(dy) && canMoveX) {
+                        giantGhost.x += moveX;
+                    } else if (canMoveY) {
+                        giantGhost.y += moveY;
+                    } else if (canMoveX) {
+                        giantGhost.x += moveX;
+                    }
+            
+                    // Check for collision with player (any part of the 2x2 ghost)
+                    if ((player.x >= giantGhost.x && player.x <= giantGhost.x + 1) &&
+                        (player.y >= giantGhost.y && player.y <= giantGhost.y + 1)) {
+                        loseLife();
+                        return;
+                    }
+                }
+                
+                // For level 36, don't process other enemies
+                if (level === 36) {
+                    return;
+                }
+                // For levels 45, 55, and 65 continue processing other enemies
+            }
+            
+            // Move first ghost (if exists)
+            if (enemy) {
+                let dx = player.x - enemy.x;
+                let dy = player.y - enemy.y;
+                let moveX = 0, moveY = 0;
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    moveX = dx > 0 ? 1 : -1;
+                } else if (dy !== 0) {
+                    moveY = dy > 0 ? 1 : -1;
+                }
+                
+                // Check valid movement
+                if (maze[enemy.y + moveY] && maze[enemy.y + moveY][enemy.x + moveX] === 0) {
+                    enemy.x += moveX;
+                    enemy.y += moveY;
+                } else if (moveX !== 0 && maze[enemy.y][enemy.x + moveX] === 0) {
+                    enemy.x += moveX;
+                } else if (moveY !== 0 && maze[enemy.y + moveY][enemy.x] === 0) {
+                    enemy.y += moveY;
+                }
+            }
+            
+            // Move second ghost (if exists) with a different pattern
+            if (ghost2) {
+                // The second ghost is a bit smarter, tries to corner the player
+                dx = player.x - ghost2.x;
+                dy = player.y - ghost2.y;
+                
+                // Choose a random direction sometimes to be less predictable
+                if (Math.random() < 0.3) {
+                    if (Math.random() < 0.5) {
+                        moveX = Math.sign(dx);
+                        moveY = 0;
+                    } else {
+                        moveY = Math.sign(dy);
+                        moveX = 0;
+                    }
+                } else {
+                    // Normal strategy
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        moveX = dx > 0 ? 1 : -1;
+                        moveY = 0;
+                    } else {
+                        moveY = dy > 0 ? 1 : -1;
+                        moveX = 0;
+                    }
+                }
+                
+                // Check valid movement for ghost2
+                if (maze[ghost2.y + moveY] && maze[ghost2.y + moveY][ghost2.x + moveX] === 0) {
+                    ghost2.x += moveX;
+                    ghost2.y += moveY;
+                } else if (moveX !== 0 && maze[ghost2.y][ghost2.x + moveX] === 0) {
+                    ghost2.x += moveX;
+                } else if (moveY !== 0 && maze[ghost2.y + moveY][ghost2.x] === 0) {
+                    ghost2.y += moveY;
+                }
+            }
+            
+            // Move the devil (if exists) - moves 50% slower but always moves
+            if (devil) {
+                const currentTime = Date.now();
+                // Only moves every 1000ms (normal ghosts move every 500ms)
+                if (currentTime - devil.lastMoveTime >= 1000) {
+                    devil.lastMoveTime = currentTime;
+                    
+                    dx = player.x - devil.x;
+                    dy = player.y - devil.y;
+                    
+                    // Movement algorithm similar to first ghost
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        moveX = dx > 0 ? 1 : -1;
+                        moveY = 0;
+                    } else {
+                        moveY = dy > 0 ? 1 : -1;
+                        moveX = 0;
+                    }
+                    
+                    // Check valid movement for devil
+                    let moved = false;
+                    
+                    // Try direct movement first
+                    if (maze[devil.y + moveY] && maze[devil.y + moveY][devil.x + moveX] === 0) {
+                        devil.x += moveX;
+                        devil.y += moveY;
+                        moved = true;
+                    } else if (moveX !== 0 && maze[devil.y][devil.x + moveX] === 0) {
+                        devil.x += moveX;
+                        moved = true;
+                    } else if (moveY !== 0 && maze[devil.y + moveY][devil.x] === 0) {
+                        devil.y += moveY;
+                        moved = true;
+                    }
+                    
+                    // If couldn't move, look for any available cell closer to player
+                    if (!moved) {
+                        // Define possible directions (including diagonals)
+                        const directions = [
+                            [0, 1], [1, 0], [0, -1], [-1, 0], // Cardinals
+                            [1, 1], [1, -1], [-1, 1], [-1, -1] // Diagonals
+                        ];
+                        
+                        // Sort directions by proximity to player
+                        const sortedDirs = directions
+                            .map(([dx, dy]) => {
+                                return {
+                                    dx, dy,
+                                    dist: Math.abs((devil.x + dx) - player.x) + Math.abs((devil.y + dy) - player.y)
+                                };
+                            })
+                            .sort((a, b) => a.dist - b.dist); // Sort by ascending distance
+                        
+                        // Try each sorted direction until finding a valid one
+                        for (const {dx, dy} of sortedDirs) {
+                            if (maze[devil.y + dy] && 
+                                maze[devil.y + dy][devil.x + dx] === 0) {
+                                devil.x += dx;
+                                devil.y += dy;
+                                moved = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Move cloud enemy (if exists) - moves slowly and ignores obstacles
+            if (cloudEnemy) {
+                const currentTime = Date.now();
+                if (currentTime - cloudEnemy.lastMoveTime >= cloudEnemy.moveDelay) {
+                    cloudEnemy.lastMoveTime = currentTime;
+
+                    const dx = player.x - cloudEnemy.x;
+                    const dy = player.y - cloudEnemy.y;
+
+                    let moveX = 0, moveY = 0;
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        moveX = dx > 0 ? 1 : -1;
+                    } else {
+                        moveY = dy > 0 ? 1 : -1;
+                    }            // Move while staying in bounds
+                    const newX = Math.max(1, Math.min(tilesX - 2, cloudEnemy.x + moveX));
+                    const newY = Math.max(1, Math.min(tilesY - 2, cloudEnemy.y + moveY));
+                    cloudEnemy.x = newX;
+                    cloudEnemy.y = newY;
+                }
+            }
+              // Revise collision detection for all enemies
+            let playerCollided = false;
+            if (enemy && enemy.x === player.x && enemy.y === player.y) {
+                loseLife();
+                player = { ...initialPlayerPos }; // Respawn player
+                playerCollided = true;
+            }
+            // Special collision check for ghost2 when it's a devil (levels 30, 40, 50)
+            if (ghost2) {
+                // When it's a devil form, use scaled collision detection to match the visual
+                if (ghost2.isDevil) {
+                    const now = Date.now();
+                    const scale = 1 + Math.sin(now / 750) * 0.05; // Match the visual scaling
+                    const collisionRadius = scale * 0.4; // Slightly smaller than visual for fairness
+                    if (Math.abs(ghost2.x - player.x) <= collisionRadius && 
+                        Math.abs(ghost2.y - player.y) <= collisionRadius) {
+                        loseLife();
+                        player = { ...initialPlayerPos }; // Respawn player
+                        playerCollided = true;
+                    }
+                } else {
+                    // Regular ghost2 uses point collision
+                    if (ghost2.x === player.x && ghost2.y === player.y) {
+                        loseLife();
+                        player = { ...initialPlayerPos }; // Respawn player
+                        playerCollided = true;
+                    }
+                }
+            }
+
+            if (devil && devil.x === player.x && devil.y === player.y) {
+                loseLife();
+                player = { ...initialPlayerPos }; // Respawn player
+            }            if (cloudEnemy && Math.abs(cloudEnemy.x - player.x) <= 0.5 && Math.abs(cloudEnemy.y - player.y) <= 0.5) {
+                loseLife();
+                player = { ...initialPlayerPos }; // Respawn player
+            }
+            
+            // --- Special Giant Ghost Logic for Level 36 ---
+            if (level === 36 && !won && !paused) {
+                // Activate giant ghost
+                if (!giantGhost) {
+                    // Find a cell for the giant ghost, far from the player
+                    let candidateCells = [];
+                    for (let y = 1; y < tilesY - 1; y++) {
+                        for (let x = 1; x < tilesX - 1; x++) {
+                            if (maze[y][x] === 0 && (x !== player.x || y !== player.y)) {
+                                candidateCells.push({x, y});
+                            }
+                        }
+                    }
+                    
+                    // Exclude cells near the player
+                    candidateCells = candidateCells.filter(cell => {
+                        return Math.abs(cell.x - player.x) + Math.abs(cell.y - player.y) > 10;
+                    });
+                    
+                    // If we have valid candidate cells, place the giant ghost in one of them
+                    if (candidateCells.length > 0) {
+                        const spawnCell = candidateCells[Math.floor(Math.random() * candidateCells.length)];
+                        giantGhost = { x: spawnCell.x, y: spawnCell.y, dir: 'left' };
+                    }
+                } else {
+                    // Move the giant ghost towards the player
+                    let dx = player.x - giantGhost.x;
+                    let dy = player.y - giantGhost.y;
+                    let moveX = 0, moveY = 0;
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        moveX = dx > 0 ? 1 : -1;
+                    } else if (dy !== 0) {
+                        moveY = dy > 0 ? 1 : -1;
+                    }
+                    
+                    // Check valid movement for giant ghost
+                    if (maze[giantGhost.y + moveY] && maze[giantGhost.y + moveY][giantGhost.x + moveX] === 0) {
+                        giantGhost.x += moveX;
+                        giantGhost.y += moveY;
+                    } else if (moveX !== 0 && maze[giantGhost.y][giantGhost.x + moveX] === 0) {
+                        giantGhost.x += moveX;
+                    } else if (moveY !== 0 && maze[giantGhost.y + moveY][giantGhost.x] === 0) {
+                        giantGhost.y += moveY;
+                    }                }
+            }
+            
+            draw();
+        }
+        
+        // Friendly dog spawning and movement
+        function spawnFriendlyDog(x, y) {
+            friendlyDog = {
+                x: x,
+                y: y,
+                lastMoveTime: Date.now(),
+                isFighting: false,
+                fightStartTime: null,
+                stuckCounter: 0,
+                lastSuccessfulDir: null
+            };
+        }        function moveFriendlyDog() {
+            if (!friendlyDog || (!enemy && !ghost2)) return;
+
+            // If fighting, just return since draw function handles the animation removal
+            if (friendlyDog.isFighting) {
+                return;
+            }
+
+            // Move every 700ms for slower movement
+            const currentTime = Date.now();
+            if (currentTime - friendlyDog.lastMoveTime < 700) return;
+
+            // Determine which enemy to chase based on proximity
+            let targetEnemy = enemy;
+            let dx = 0, dy = 0;
+
+            if (ghost2) {
+                const dist1 = enemy ? Math.abs(enemy.x - friendlyDog.x) + Math.abs(enemy.y - friendlyDog.y) : Infinity;
+                const dist2 = Math.abs(ghost2.x - friendlyDog.x) + Math.abs(ghost2.y - friendlyDog.y);
+                
+                // If ghost2 is closer or there's no enemy1, target ghost2
+                if (dist2 < dist1) {
+                    targetEnemy = ghost2;
+                }
+            }
+
+            // Calculate direction to chosen target
+            dx = targetEnemy.x - friendlyDog.x;
+            dy = targetEnemy.y - friendlyDog.y;
+
+            let moved = false;
+
+            // If stuck for too long, try alternative paths
+            if (friendlyDog.stuckCounter >= 3) {
+                // Define possible movement directions in order of preference
+                const directions = [
+                    // Cardinal directions
+                    {x: 1, y: 0}, {x: 0, y: 1}, {x: -1, y: 0}, {x: 0, y: -1},
+                    // Diagonal directions
+                    {x: 1, y: 1}, {x: 1, y: -1}, {x: -1, y: 1}, {x: -1, y: -1}
+                ];
+
+                // Try each direction until one works
+                for (const dir of directions) {
+                    // Skip the last direction that got us stuck
+                    if (friendlyDog.lastSuccessfulDir && 
+                        dir.x === -friendlyDog.lastSuccessfulDir.x && 
+                        dir.y === -friendlyDog.lastSuccessfulDir.y) {
+                        continue;
+                    }
+                    
+                    const newX = friendlyDog.x + dir.x;
+                    const newY = friendlyDog.y + dir.y;
+                    
+                    if (maze[newY] && maze[newY][newX] === 0) {
+                        friendlyDog.x = newX;
+                        friendlyDog.y = newY;
+                        friendlyDog.lastSuccessfulDir = dir;
+                        moved = true;
+                        friendlyDog.stuckCounter = 0;
+                        break;
+                    }
+                }
+            } else {
+                // Normal movement logic - try direct path first
+                if (dx !== 0) {
+                    const newX = friendlyDog.x + Math.sign(dx);
+                    if (maze[friendlyDog.y] && maze[friendlyDog.y][newX] === 0) {
+                        friendlyDog.x = newX;
+                        friendlyDog.lastSuccessfulDir = {x: Math.sign(dx), y: 0};
+                        moved = true;
+                    } else if (dy !== 0) {
+                        // If blocked horizontally, try vertical
+                        const newY = friendlyDog.y + Math.sign(dy);
+                        if (maze[newY] && maze[newY][friendlyDog.x] === 0) {
+                            friendlyDog.y = newY;
+                            friendlyDog.lastSuccessfulDir = {x: 0, y: Math.sign(dy)};
+                            moved = true;
+                        }
+                    }
+                } else if (dy !== 0) {
+                    const newY = friendlyDog.y + Math.sign(dy);
+                    if (maze[newY] && maze[newY][friendlyDog.x] === 0) {
+                        friendlyDog.y = newY;
+                        friendlyDog.lastSuccessfulDir = {x: 0, y: Math.sign(dy)};
+                        moved = true;
+                    }
+                }
+            }
+
+            // Update stuck counter based on movement success
+            if (!moved) {
+                friendlyDog.stuckCounter++;
+            } else {
+                friendlyDog.stuckCounter = 0;
+            }
+
+            friendlyDog.lastMoveTime = currentTime;            // Check for collision with enemies
+            if ((enemy && friendlyDog.x === enemy.x && friendlyDog.y === enemy.y) ||
+                (ghost2 && friendlyDog.x === ghost2.x && friendlyDog.y === ghost2.y)) {
+                
+                // Determine which ghost to remove
+                if (ghost2 && friendlyDog.x === ghost2.x && friendlyDog.y === ghost2.y) {
+                    ghost2 = null;
+                } else {
+                    enemy = null;
+                }
+                
+                friendlyDog.isFighting = true;
+                friendlyDog.fightStartTime = currentTime;
+            }
+        }
+
+        function findPathToGhost(startX, startY, targetX, targetY) {
+            const openSet = [[startX, startY]];
+            const cameFrom = new Map();
+            const gScore = new Map();
+            const fScore = new Map();
+            
+            gScore.set(`${startX},${startY}`, 0);
+            fScore.set(`${startX},${startY}`, heuristic(startX, startY, targetX, targetY));
+            
+            while ( openSet.length > 0) {
+                let current = getCellWithLowestFScore(openSet, fScore);
+                if (current[0] === targetX && current[1] === targetY) {
+                    return reconstructPath(cameFrom, current);
+                }
+                
+                openSet.splice(openSet.findIndex(pos => pos[0] === current[0] && pos[1] === current[1]), 1);
+                
+                for (const [dx, dy] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) {
+                    const neighbor = [current[0] + dx, current[1] + dy];
+                    if (neighbor[0] < 0 || neighbor[0] >= maze.length || 
+                        neighbor[1] < 0 || neighbor[1] >= maze[0].length ||
+                        maze[neighbor[0]][neighbor[1]]) continue;
+            
+            const tentativeGScore = gScore.get(`${current[0]},${current[1]}`) + 1;
+            if (!gScore.has(`${neighbor[0]},${neighbor[1]}`) || 
+                tentativeGScore < gScore.get(`${neighbor[0]},${neighbor[1]}`)) {
+                cameFrom.set(`${neighbor[0]},${neighbor[1]}`, current);
+                gScore.set(`${neighbor[0]},${neighbor[1]}`, tentativeGScore);
+                fScore.set(`${neighbor[0]},${neighbor[1]}`, 
+                    tentativeGScore + heuristic(neighbor[0], neighbor[1], targetX, targetY));
+                if (!openSet.some(pos => pos[0] === neighbor[0] && pos[1] === neighbor[1])) {
+                    openSet.push(neighbor);
+                }
+            }
+        }
+    }
+    return null;
+}
+
+function heuristic(x1, y1, x2, y2) {
+    return Math.abs(x1 - x2) + Math.abs(y1 - y2);
+}
+
+function getCellWithLowestFScore(openSet, fScore) {
+    return openSet.reduce((lowest, current) => {
+        const currentScore = fScore.get(`${current[0]},${current[1]}`);
+        const lowestScore = fScore.get(`${lowest[0]},${lowest[1]}`);
+        return currentScore < lowestScore ? current : lowest;
+    });
+}
+
+function reconstructPath(cameFrom, current) {
+    const path = [current];
+    while (cameFrom.has(`${current[0]},${current[1]}`)) {
+        current = cameFrom.get(`${current[0]},${current[1]}`);
+        path.unshift(current);
+    }
+    return path;
+}
+          function tryDraw() {
+            if (boncImg.complete && coinImg.complete && ghostImg.complete && lifeImg.complete && prizeImg.complete && devilImg.complete && backgroundImg.complete && boneImg.complete) {
+                maze = generateMazeAI(level);
+                updateLivesDisplay();
+                // Initialize music for starting level
+                if (GameMusic.enabled) {
+                    GameMusic.updateForLevel(level);
+                }
+                draw();
+                animate();
+                
+                // Initialize mobile controls
+                setupMobileControls();
+            } else {
+                setTimeout(tryDraw, 50);
+            }
+        }
+        tryDraw();
+
+        function animate() {
+            if (!won && !paused) {
+                // Use requestAnimationFrame's timestamp to control movement speed
+                const currentTime = Date.now();
+                // Only move enemies every 500ms for smoother gameplay and only for levels 4+
+                if (level >= 4 && (!animate.lastMoveTime || currentTime - animate.lastMoveTime >= 500)) {
+                    moveEnemies();
+                    animate.lastMoveTime = currentTime;
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+    </script>
+</body>
+</html>
