@@ -1700,10 +1700,19 @@ function triggerPlayerHurt() {
                     ctx.restore();
                 }
             }
-            
-            // Draw player
+              // Draw player (mirrored if lastDir is right)
+            ctx.save();
             const playerImg = playerHurt ? bonchurtImg : boncImg;
-            ctx.drawImage(playerImg, player.x * tileSize, player.y * tileSize, tileSize, tileSize);
+            if (player.lastDir === 'right') {
+                // Move origin to the right edge of the tile, then flip
+                ctx.translate((player.x + 1) * tileSize, player.y * tileSize);
+                ctx.scale(-1, 1);
+                ctx.drawImage(playerImg, 0, 0, tileSize, tileSize);
+            } else {
+                // Default: facing left
+                ctx.drawImage(playerImg, player.x * tileSize, player.y * tileSize, tileSize, tileSize);
+            }
+            ctx.restore();
             
                        
             // Draw cloud enemy (if it exists)
@@ -1962,7 +1971,7 @@ function triggerPlayerHurt() {
                 moveDir = dir;
                 movePlayer(dir);
                 if (moveInterval) clearInterval(moveInterval);
-                moveInterval = setInterval(() => movePlayer(moveDir), 100);
+                moveInterval = setInterval(() => movePlayer(dir), 100);
             }
         });
         
