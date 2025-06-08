@@ -789,9 +789,8 @@
 
                 totalObstacles = Math.min(totalObstacles, obstacleCandidates.length); // Make sure we don't exceed available candidates
                 const shuffledCandidates = [...obstacleCandidates].sort(() => Math.random() - 0.5);
-                
-                // Add fire obstacles (1-2 fires depending on level)
-                const numFireObstacles = Math.min(Math.floor(level / 30), 2); // More fires at higher levels
+                  // Add fire obstacles (0 fires as requested)
+                const numFireObstacles = 0; // No fires will spawn, but keeping the code structure
                 for (let i = 0; i < numFireObstacles && i < shuffledCandidates.length; i++) {
                     fireObstaclesList.push(shuffledCandidates[i]);
                     m[shuffledCandidates[i].y][shuffledCandidates[i].x] = 0; // Start as path
@@ -1481,10 +1480,8 @@ function triggerPlayerHurt() {
                                 maze[obs.y][obs.x] = dynamicObstaclesVisible ? 1 : 0;
                             }
                         }
-                    }
-
-                    // Check if player is on fire when it activates
-                    if (fireObstaclesActive) {
+                    }                    // Check if player is on fire when it activates (disabled - no fire objects will spawn)
+                    if (false && fireObstaclesActive) {
                         for (const fire of fireObstaclesList) {
                             if (player.x === fire.x && player.y === fire.y) {
                                 loseLife();
@@ -1762,10 +1759,8 @@ function triggerPlayerHurt() {
                 if (dir === 'left' || dir === 'right') {
                     player.lastDir = dir;
                 }
-                player.dir = dir;
-
-                // Check if player stepped on active fire
-                if (fireObstaclesActive && level >= 22) {
+                player.dir = dir;                // Check if player stepped on active fire (disabled - no fire objects will spawn)
+                if (false && fireObstaclesActive && level >= 22) {
                     for (const fire of fireObstaclesList) {
                         if (player.x === fire.x && player.y === fire.y) {
                             loseLife();
